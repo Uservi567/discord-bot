@@ -21,14 +21,11 @@ if (!TOKEN) {
 }
 
 const CONFIG = {
-  memberRoleId: "1347851123364593753",
+  memberRoleId: "1347851123364593753", // Member เดิมของคุณ
   verifyButtonId: "main_verify_button",
-
   archiveCategoryName: "🗃️ ห้องเก่า",
   statsCategoryName: "📊 SERVER STATUS",
 
-  // ยศหลักที่อยากให้มี
-  // จะไม่สร้าง Member ใหม่ เพราะใช้จาก memberRoleId
   roles: [
     { name: "👑 เจ้าของธุรกิจ", color: 0xe91e63, hoist: true, aliases: ["founder"] },
     { name: "🛡 แอดมิน สรุปผล", color: 0xf44336, hoist: true, aliases: ["admin"] },
@@ -59,8 +56,8 @@ const CONFIG = {
             "1. เคารพกันและกัน",
             "2. ห้ามสแปม / ห้ามปั่น",
             "3. ห้ามโฆษณาโดยไม่ได้รับอนุญาต",
-            "4. ใช้ห้องให้ตรงประเภท",
-          ],
+            "4. ใช้ห้องให้ตรงประเภท"
+          ]
         },
         {
           type: "text",
@@ -70,8 +67,8 @@ const CONFIG = {
           everyoneSend: false,
           seed: [
             "# 📢 ประกาศ",
-            "ห้องนี้ใช้สำหรับประกาศสำคัญจากทีมงาน",
-          ],
+            "ห้องนี้ใช้สำหรับประกาศสำคัญจากทีมงาน"
+          ]
         },
         {
           type: "text",
@@ -81,8 +78,8 @@ const CONFIG = {
           everyoneSend: false,
           seed: [
             "# 👋 ยินดีต้อนรับ",
-            "เริ่มต้นที่ห้อง `🎭│รับยศ` เพื่อเปิดห้องทั้งหมดของเซิร์ฟเวอร์",
-          ],
+            "เริ่มต้นที่ห้อง `🎭│รับยศ` เพื่อเปิดห้องทั้งหมดของเซิร์ฟเวอร์"
+          ]
         },
         {
           type: "text",
@@ -90,7 +87,7 @@ const CONFIG = {
           aliases: ["รับยศ", "verify", "roles"],
           everyoneView: true,
           everyoneSend: false,
-          seed: [],
+          seed: []
         },
         {
           type: "text",
@@ -100,18 +97,18 @@ const CONFIG = {
           everyoneSend: false,
           seed: [
             "# 🔗 เชิญเพื่อน",
-            "แชร์ลิงก์เชิญเซิร์ฟเวอร์นี้ให้เพื่อนของคุณได้ที่นี่",
-          ],
-        },
-      ],
+            "แชร์ลิงก์เชิญเซิร์ฟเวอร์นี้ให้เพื่อนของคุณได้ที่นี่"
+          ]
+        }
+      ]
     },
     {
       category: "📊 SERVER STATUS",
       channels: [
         { type: "voice", name: "👥 สมาชิกทั้งหมด: 0", stat: "total" },
         { type: "voice", name: "🟢 ออนไลน์: 0", stat: "online" },
-        { type: "voice", name: "🤖 บอท: 0", stat: "bots" },
-      ],
+        { type: "voice", name: "🤖 บอท: 0", stat: "bots" }
+      ]
     },
     {
       category: "💬 COMMUNITY",
@@ -121,30 +118,30 @@ const CONFIG = {
           name: "💬│พูดคุย",
           aliases: ["พูดคุย", "chat"],
           memberOnly: true,
-          seed: ["# 💬 พูดคุย", "ห้องพูดคุยทั่วไปของคอมมูนิตี้"],
+          seed: ["# 💬 พูดคุย", "ห้องพูดคุยทั่วไปของคอมมูนิตี้"]
         },
         {
           type: "text",
           name: "📷│แชร์ผลงาน",
           aliases: ["แชร์ผลงาน", "ผลงาน", "showcase", "ช่องส่งผลงาน"],
           memberOnly: true,
-          seed: ["# 📷 แชร์ผลงาน", "อัปเดตผลงานหรือสิ่งที่คุณกำลังทำอยู่ได้ที่นี่"],
+          seed: ["# 📷 แชร์ผลงาน", "อัปเดตผลงานหรือสิ่งที่คุณกำลังทำอยู่ได้ที่นี่"]
         },
         {
           type: "text",
           name: "❓│ถามตอบ",
           aliases: ["ถามตอบ", "qna"],
           memberOnly: true,
-          seed: ["# ❓ ถามตอบ", "ถามคำถามเกี่ยวกับธุรกิจ การทำงาน หรือการใช้งานเซิร์ฟเวอร์"],
+          seed: ["# ❓ ถามตอบ", "ถามคำถามเกี่ยวกับธุรกิจ การทำงาน หรือการใช้งานเซิร์ฟเวอร์"]
         },
         {
           type: "text",
           name: "📈│ผลลัพธ์",
           aliases: ["result", "ผลลัพธ์", "result-ผลลัพธ์"],
           memberOnly: true,
-          seed: ["# 📈 ผลลัพธ์", "แชร์ผลลัพธ์ ความคืบหน้า และชัยชนะของคุณ"],
-        },
-      ],
+          seed: ["# 📈 ผลลัพธ์", "แชร์ผลลัพธ์ ความคืบหน้า และชัยชนะของคุณ"]
+        }
+      ]
     },
     {
       category: "💼 BUSINESS ZONE",
@@ -154,8 +151,8 @@ const CONFIG = {
         { type: "text", name: "💰│amazon", aliases: ["amazon"], memberOnly: true, seed: ["# 💰 Amazon"] },
         { type: "text", name: "📦│dropshipping", aliases: ["dropshipping", "dropship"], memberOnly: true, seed: ["# 📦 Dropshipping"] },
         { type: "text", name: "👕│amazon-merch", aliases: ["amazon merch", "merch", "amazon-merch"], memberOnly: true, seed: ["# 👕 Amazon Merch"] },
-        { type: "text", name: "🧠│แชร์ไอเดีย", aliases: ["แชร์ไอเดีย", "ideas"], memberOnly: true, seed: ["# 🧠 แชร์ไอเดีย"] },
-      ],
+        { type: "text", name: "🧠│แชร์ไอเดีย", aliases: ["แชร์ไอเดีย", "ideas"], memberOnly: true, seed: ["# 🧠 แชร์ไอเดีย"] }
+      ]
     },
     {
       category: "🗣 TALK ZONE",
@@ -164,8 +161,8 @@ const CONFIG = {
         { type: "voice", name: "💼 ธุรกิจ", aliases: ["ธุรกิจ"], memberOnly: true },
         { type: "voice", name: "💵 การเงิน", aliases: ["การเงิน"], memberOnly: true },
         { type: "voice", name: "📚 อ่านหนังสือ", aliases: ["อ่านหนังสือ"], memberOnly: true },
-        { type: "voice", name: "🛠 ทำงาน", aliases: ["ทำงาน"], memberOnly: true },
-      ],
+        { type: "voice", name: "🛠 ทำงาน", aliases: ["ทำงาน"], memberOnly: true }
+      ]
     },
     {
       category: "🎓 CLASS / VIP",
@@ -174,34 +171,44 @@ const CONFIG = {
         { type: "text", name: "🟣│rank-b", aliases: ["นักเรียน rank b", "rank b", "rank-b"], roleView: "🟣 นักเรียน RANK B", seed: ["# 🟣 Rank B"] },
         { type: "text", name: "🧡│etsy-student", aliases: ["esty student", "etsy student"], roleView: "🧡 ESTY Student", seed: ["# 🧡 Etsy Student"] },
         { type: "text", name: "📦│amazon-student", aliases: ["amazon student", "amazon.student"], roleView: "📦 amazon.Student", seed: ["# 📦 Amazon Student"] },
-        { type: "text", name: "🚀│vip-class", aliases: ["vip", "vip class", "vip-class"], roleView: "🚀 VIP", seed: ["# 🚀 VIP Class"] },
-      ],
+        { type: "text", name: "🚀│vip-class", aliases: ["vip", "vip class", "vip-class"], roleView: "🚀 VIP", seed: ["# 🚀 VIP Class"] }
+      ]
     },
     {
       category: "🎵 MUSIC",
       channels: [
         { type: "text", name: "🎵│music", aliases: ["music"], memberOnly: true, seed: ["# 🎵 Music"] },
-        { type: "voice", name: "🎶 Music Room 1", aliases: ["music room", "music room 1"], memberOnly: true },
-      ],
+        { type: "voice", name: "🎶 Music Room 1", aliases: ["music room", "music room 1"], memberOnly: true }
+      ]
     },
     {
       category: "🛠 SUPPORT",
       channels: [
         { type: "text", name: "🎫│เปิดตั๋ว", aliases: ["ticket", "เปิดตั๋ว"], memberOnly: true, seed: ["# 🎫 Support Ticket"] },
-        { type: "text", name: "🆘│แจ้งปัญหา", aliases: ["support", "แจ้งปัญหา"], memberOnly: true, seed: ["# 🆘 แจ้งปัญหา"] },
-      ],
+        { type: "text", name: "🆘│แจ้งปัญหา", aliases: ["support", "แจ้งปัญหา"], memberOnly: true, seed: ["# 🆘 แจ้งปัญหา"] }
+      ]
     },
     {
       category: "👨‍💻 ADMIN",
       channels: [
         { type: "text", name: "📁│หลังบ้าน", aliases: ["รายงานปัญหา", "หลังบ้าน", "admin"], staffOnly: true, seed: ["# 📁 หลังบ้านทีมงาน"] },
-        { type: "voice", name: "🛡 Staff Room", aliases: ["ทีมงาน", "ผู้ดูแลระบบ", "admin voice"], staffOnly: true },
-      ],
-    },
-  ],
+        { type: "voice", name: "🛡 Staff Room", aliases: ["ทีมงาน", "ผู้ดูแลระบบ", "admin voice"], staffOnly: true }
+      ]
+    }
+  ]
 };
 
-/* ------------------ helpers ------------------ */
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildPresences,
+  ],
+});
+
+/* helpers */
 
 function normalizeName(name = "") {
   return name
@@ -228,12 +235,10 @@ function getMemberRole(guild) {
 }
 
 function getExactChannel(guild, name, type = null) {
-  return (
-    guild.channels.cache.find((c) => {
-      if (type !== null) return c.name === name && c.type === type;
-      return c.name === name;
-    }) || null
-  );
+  return guild.channels.cache.find((c) => {
+    if (type !== null) return c.name === name && c.type === type;
+    return c.name === name;
+  }) || null;
 }
 
 async function ensureRole(guild, cfg) {
@@ -293,7 +298,6 @@ async function dedupeRoles(guild) {
     });
 
     for (const dup of dupes.values()) {
-      // โอนสมาชิกจาก role ซ้ำไป role หลัก
       for (const member of members.values()) {
         if (member.roles.cache.has(dup.id) && !member.roles.cache.has(canonical.id)) {
           await member.roles.add(canonical).catch(() => {});
@@ -303,7 +307,6 @@ async function dedupeRoles(guild) {
         }
       }
 
-      // โอน permission overwrite จาก role ซ้ำไป role หลัก
       for (const channel of guild.channels.cache.values()) {
         const overwrite = channel.permissionOverwrites.cache.get(dup.id);
         if (overwrite) {
@@ -475,7 +478,6 @@ function findMatchingChannels(guild, channelCfg) {
 }
 
 async function ensureChannel(guild, category, botMember, channelCfg, managedIds, archiveCategory) {
-  const type = getChannelType(channelCfg.type);
   const matches = findMatchingChannels(guild, channelCfg);
 
   let channel = matches.first() || null;
@@ -485,7 +487,7 @@ async function ensureChannel(guild, category, botMember, channelCfg, managedIds,
   if (!channel) {
     channel = await guild.channels.create({
       name: channelCfg.name,
-      type,
+      type: getChannelType(channelCfg.type),
       parent: category.id,
       permissionOverwrites: overwrites,
       reason: "สร้างห้องใหม่จากระบบ smartfix",
@@ -604,11 +606,9 @@ async function seedAllRooms(guild) {
 }
 
 function findStatChannel(guild, prefix) {
-  return (
-    guild.channels.cache.find(
-      (c) => c.type === ChannelType.GuildVoice && c.name.startsWith(prefix)
-    ) || null
-  );
+  return guild.channels.cache.find(
+    (c) => c.type === ChannelType.GuildVoice && c.name.startsWith(prefix)
+  ) || null;
 }
 
 async function updateStats(guild) {
@@ -687,14 +687,15 @@ async function archiveUnmanagedChannels(guild, managedIds) {
   return moved;
 }
 
-/* ------------------ events ------------------ */
+/* events */
 
 client.once("clientReady", async () => {
   console.log(`บอทออนไลน์แล้ว ${client.user.tag}`);
   console.log("ใช้ !smartfix เพื่อจัดระเบียบเซิร์ฟเวอร์แบบอัจฉริยะ");
-  console.log("ใช้ !seedrooms เพื่อเติมข้อความให้ห้องว่าง");
+  console.log("ใช้ !deduperoles เพื่อรวม role ซ้ำ");
+  console.log("ใช้ !archiveold เพื่อย้ายห้องเก่าไปเก็บ");
+  console.log("ใช้ !seedrooms เพื่อเติมข้อความห้องใหม่");
   console.log("ใช้ !sendverify เพื่อรีเฟรชปุ่มรับยศ");
-  console.log("ใช้ !setupstats เพื่ออัปเดตห้องสถิติ");
 
   for (const guild of client.guilds.cache.values()) {
     await updateStats(guild).catch(() => {});
@@ -709,13 +710,16 @@ client.once("clientReady", async () => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
+
+  console.log("MESSAGE:", message.content);
+
+  if (message.content === "!testbot") {
+    return message.reply("บอทอ่านคำสั่งได้แล้ว");
+  }
+
   if (!message.content.startsWith(PREFIX)) return;
 
   const cmd = message.content.slice(PREFIX.length).trim().toLowerCase();
-
-  if (cmd === "testbot") {
-    return message.reply("บอทอ่านคำสั่งได้แล้ว");
-  }
 
   if (cmd === "smartfix") {
     try {
@@ -756,31 +760,42 @@ client.on("messageCreate", async (message) => {
       await status.edit("1/6 กำลังเช็กและสร้าง role ที่จำเป็น...");
       await ensureRoles(message.guild);
 
-      await status.edit("2/6 กำลังรวม role ที่ซ้ำกัน...");
-      const dedupedRoles = await dedupeRoles(message.guild);
+      await status.edit("2/6 กำลังซิงก์ห้องเก่าเข้ากับโครงสร้างใหม่...");
+      await syncFullLayout(message.guild);
 
-      await status.edit("3/6 กำลังซิงก์ห้องเก่าเข้ากับโครงสร้างใหม่...");
-      const managedIds = await syncFullLayout(message.guild);
-
-      await status.edit("4/6 กำลังอัปเดตห้องสถิติ...");
+      await status.edit("3/6 กำลังอัปเดตห้องสถิติ...");
       await updateStats(message.guild);
 
-      await status.edit("5/6 กำลังรีเฟรชปุ่มรับยศ...");
+      await status.edit("4/6 กำลังรีเฟรชปุ่มรับยศ...");
       await refreshVerifyPanel(message.guild);
 
-      await status.edit("6/6 กำลังเติมข้อความให้ห้องที่ยังว่าง...");
+      await status.edit("5/6 กำลังเติมข้อความให้ห้องว่าง...");
       const seeded = await seedAllRooms(message.guild);
 
-      await status.edit(
-        `เสร็จแล้ว ✅\nรวม role ซ้ำ: ${dedupedRoles}\nเติมข้อความห้องใหม่: ${seeded}`
-      );
-
-      await message.channel.send(
-        "ถ้าคุณอยากย้ายห้องที่ไม่อยู่ในโครงสร้างหลักไปเก็บ ใช้ `!archiveold`"
-      );
+      await status.edit(`เสร็จแล้ว ✅ เติมข้อความห้องใหม่ ${seeded} ห้อง`);
+      await message.channel.send("ถ้าต้องการรวม role ซ้ำด้วย ให้ใช้ `!deduperoles`");
     } catch (error) {
       console.error("smartfix error:", error);
       await message.reply("เกิดข้อผิดพลาดระหว่างจัดระเบียบเซิร์ฟเวอร์");
+    }
+  }
+
+  if (cmd === "deduperoles") {
+    try {
+      if (
+        !message.member.permissions.has(PermissionsBitField.Flags.Administrator) &&
+        !message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)
+      ) {
+        return message.reply("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
+      }
+
+      const status = await message.reply("กำลังรวม role ซ้ำ...");
+      await ensureRoles(message.guild);
+      const deduped = await dedupeRoles(message.guild);
+      await status.edit(`รวม role ซ้ำแล้ว ${deduped} อัน ✅`);
+    } catch (error) {
+      console.error("deduperoles error:", error);
+      await message.reply("เกิดข้อผิดพลาดระหว่างรวม role ซ้ำ");
     }
   }
 
