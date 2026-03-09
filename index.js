@@ -1,4 +1,4 @@
-require('dotenv').config();
+require("dotenv").config();
 
 const {
   Client,
@@ -8,23 +8,149 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-} = require('discord.js');
+  StringSelectMenuBuilder,
+  MessageFlags,
+} = require("discord.js");
 
 const TOKEN = process.env.TOKEN;
+const PREFIX = "!";
 
-// ===== ระบบรับยศ =====
-const ROLE_NAME = 'Verified';
-const CATEGORY_NAME = '📌 เริ่มต้น';
-const VERIFY_CHANNEL_NAME = '✅│รับยศ';
-const CHAT_CHANNEL_NAME = '💬│พูดคุย';
-const VERIFY_BUTTON_ID = 'verify_member_role';
+// =========================
+// CONFIG
+// =========================
+const CONFIG = {
+  roles: [
+    { name: "👑 Founder", color: 0xe91e63, hoist: true },
+    { name: "🛡 Admin", color: 0xf44336, hoist: true },
+    { name: "🎓 Team", color: 0x2196f3, hoist: true },
+    { name: "📋 Moderator", color: 0x9c27b0, hoist: true },
+    { name: "🤖 Bots", color: 0x95a5a6, hoist: true },
 
-// ===== ระบบสถิติ =====
-const STATS_CATEGORY_NAME = '📊 SERVER STATUS';
-const TOTAL_CHANNEL_PREFIX = '👥 สมาชิกทั้งหมด: ';
-const ONLINE_CHANNEL_PREFIX = '🟢 ออนไลน์: ';
-const BOT_CHANNEL_PREFIX = '🤖 บอท: ';
+    { name: "💎 Premium Student", color: 0xf1c40f, hoist: true },
+    { name: "🟣 Rank B", color: 0x8e44ad, hoist: true },
+    { name: "🛒 Etsy Student", color: 0xe67e22, hoist: true },
+    { name: "📦 Amazon Student", color: 0x3498db, hoist: true },
 
+    { name: "🚀 VIP", color: 0xff9800, hoist: true },
+    { name: "🔥 Booster", color: 0xff5722, hoist: true },
+
+    { name: "✅ Verified", color: 0x2ecc71, hoist: true },
+    { name: "🌿 Member", color: 0xecf0f1, hoist: false },
+    { name: "⭐ Active Member", color: 0x1abc9c, hoist: false },
+    { name: "💬 Community", color: 0x00bcd4, hoist: false },
+
+    { name: "💸 Affiliate", color: 0x7ed321, hoist: false },
+    { name: "🧡 Etsy Seller", color: 0xff9800, hoist: false },
+    { name: "💰 Amazon Seller", color: 0x1976d2, hoist: false },
+    { name: "📦 Dropshipper", color: 0x26a69a, hoist: false },
+    { name: "👕 Merch Creator", color: 0xc2185b, hoist: false },
+
+    { name: "🎵 Music", color: 0x607d8b, hoist: false },
+  ],
+
+  selfAssignBusinessRoles: [
+    "💸 Affiliate",
+    "🧡 Etsy Seller",
+    "💰 Amazon Seller",
+    "📦 Dropshipper",
+    "👕 Merch Creator",
+  ],
+
+  verifyRole: "✅ Verified",
+
+  structure: [
+    {
+      category: "📌 START HERE",
+      channels: [
+        { type: "text", name: "📜│กฎ", everyoneView: true, everyoneSend: false },
+        { type: "text", name: "📢│ประกาศ", everyoneView: true, everyoneSend: false },
+        { type: "text", name: "👋│welcome-chat", everyoneView: true, everyoneSend: false },
+        { type: "text", name: "🎭│รับยศ", everyoneView: true, everyoneSend: false },
+        { type: "text", name: "🔗│ลิงก์เชิญเพื่อน", everyoneView: true, everyoneSend: false },
+      ],
+    },
+    {
+      category: "📊 SERVER STATUS",
+      channels: [
+        { type: "voice", name: "👥 สมาชิกทั้งหมด: 0", stat: "total" },
+        { type: "voice", name: "🟢 ออนไลน์: 0", stat: "online" },
+        { type: "voice", name: "🤖 บอท: 0", stat: "bots" },
+      ],
+    },
+    {
+      category: "💬 COMMUNITY",
+      channels: [
+        { type: "text", name: "💬│พูดคุย", verifiedOnly: true },
+        { type: "text", name: "📷│แชร์ผลงาน", verifiedOnly: true },
+        { type: "text", name: "❓│ถามตอบ", verifiedOnly: true },
+        { type: "text", name: "📊│result-ผลลัพธ์", verifiedOnly: true },
+      ],
+    },
+    {
+      category: "💰 BUSINESS ZONE",
+      channels: [
+        { type: "text", name: "💸│affiliate", verifiedOnly: true },
+        { type: "text", name: "🧡│etsy", verifiedOnly: true },
+        { type: "text", name: "💰│amazon", verifiedOnly: true },
+        { type: "text", name: "📦│dropshipping", verifiedOnly: true },
+        { type: "text", name: "👕│amazon-merch", verifiedOnly: true },
+        { type: "text", name: "🧠│แชร์ไอเดีย", verifiedOnly: true },
+      ],
+    },
+    {
+      category: "🧠 TALK ZONE",
+      channels: [
+        { type: "voice", name: "💬 พูดคุย", verifiedOnly: true },
+        { type: "voice", name: "💼 ธุรกิจ", verifiedOnly: true },
+        { type: "voice", name: "💵 การเงิน", verifiedOnly: true },
+        { type: "voice", name: "📚 อ่านหนังสือ", verifiedOnly: true },
+        { type: "voice", name: "🛠 ทำงาน", verifiedOnly: true },
+      ],
+    },
+    {
+      category: "🎓 CLASS / VIP",
+      channels: [
+        { type: "text", name: "💎│premium-student", roleView: "💎 Premium Student" },
+        { type: "text", name: "🟣│rank-b", roleView: "🟣 Rank B" },
+        { type: "text", name: "🛒│etsy-student", roleView: "🛒 Etsy Student" },
+        { type: "text", name: "📦│amazon-student", roleView: "📦 Amazon Student" },
+        { type: "text", name: "🚀│vip-class", roleView: "🚀 VIP" },
+      ],
+    },
+    {
+      category: "🛠 SUPPORT",
+      channels: [
+        { type: "text", name: "🎫│เปิดตั๋ว", verifiedOnly: true },
+        { type: "text", name: "🆘│แจ้งปัญหา", verifiedOnly: true },
+      ],
+    },
+    {
+      category: "🎵 MUSIC",
+      channels: [
+        { type: "text", name: "🎵│music", verifiedOnly: true },
+        { type: "voice", name: "🎶 Music Room 1", verifiedOnly: true },
+        { type: "voice", name: "🎶 Music Room 2", verifiedOnly: true },
+      ],
+    },
+    {
+      category: "👨‍💻 ADMIN",
+      channels: [
+        { type: "text", name: "📁│รายงานปัญหา", staffOnly: true },
+        { type: "voice", name: "🎓 ทีมงาน", staffOnly: true },
+        { type: "voice", name: "🛡 ผู้ดูแลระบบ", adminOnly: true },
+      ],
+    },
+  ],
+
+  ids: {
+    verifyButton: "btn_verify_main",
+    businessSelect: "select_business_roles",
+  },
+};
+
+// =========================
+// CLIENT
+// =========================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -35,10 +161,305 @@ const client = new Client({
   ],
 });
 
-client.once('clientReady', async () => {
+// =========================
+// HELPERS
+// =========================
+function getRole(guild, name) {
+  return guild.roles.cache.find((r) => r.name === name) || null;
+}
+
+function getChannel(guild, name, type = null) {
+  return guild.channels.cache.find((c) => {
+    if (type) return c.name === name && c.type === type;
+    return c.name === name;
+  }) || null;
+}
+
+async function ensureRole(guild, roleConfig) {
+  let role = getRole(guild, roleConfig.name);
+  if (!role) {
+    role = await guild.roles.create({
+      name: roleConfig.name,
+      color: roleConfig.color,
+      hoist: roleConfig.hoist,
+      mentionable: false,
+      reason: "สร้าง role อัตโนมัติจากระบบ setup",
+    });
+  }
+  return role;
+}
+
+async function ensureCategory(guild, name) {
+  let category = getChannel(guild, name, ChannelType.GuildCategory);
+  if (!category) {
+    category = await guild.channels.create({
+      name,
+      type: ChannelType.GuildCategory,
+      reason: "สร้างหมวดอัตโนมัติจากระบบ setup",
+    });
+  }
+  return category;
+}
+
+function buildPermissionOverwrites(guild, botMember, rule = {}) {
+  const overwrites = [];
+
+  const everyone = {
+    id: guild.roles.everyone.id,
+    allow: [],
+    deny: [],
+  };
+
+  const verifiedRole = getRole(guild, CONFIG.verifyRole);
+  const teamRole = getRole(guild, "🎓 Team");
+  const modRole = getRole(guild, "📋 Moderator");
+  const adminRole = getRole(guild, "🛡 Admin");
+  const founderRole = getRole(guild, "👑 Founder");
+
+  if (rule.everyoneView) {
+    everyone.allow.push(PermissionsBitField.Flags.ViewChannel);
+  } else {
+    everyone.deny.push(PermissionsBitField.Flags.ViewChannel);
+  }
+
+  if (rule.everyoneSend === false) {
+    everyone.deny.push(PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.Connect);
+  }
+
+  overwrites.push(everyone);
+
+  if (verifiedRole && rule.verifiedOnly) {
+    overwrites.push({
+      id: verifiedRole.id,
+      allow: [
+        PermissionsBitField.Flags.ViewChannel,
+        PermissionsBitField.Flags.ReadMessageHistory,
+        PermissionsBitField.Flags.SendMessages,
+        PermissionsBitField.Flags.Connect,
+        PermissionsBitField.Flags.Speak,
+      ],
+    });
+  }
+
+  if (rule.roleView) {
+    const specialRole = getRole(guild, rule.roleView);
+    if (specialRole) {
+      overwrites.push({
+        id: specialRole.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.ReadMessageHistory,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.Connect,
+          PermissionsBitField.Flags.Speak,
+        ],
+      });
+    }
+  }
+
+  if (rule.staffOnly && teamRole && modRole && adminRole) {
+    [teamRole, modRole, adminRole, founderRole].filter(Boolean).forEach((r) => {
+      overwrites.push({
+        id: r.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.ReadMessageHistory,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.Connect,
+          PermissionsBitField.Flags.Speak,
+        ],
+      });
+    });
+  }
+
+  if (rule.adminOnly && adminRole) {
+    [adminRole, founderRole].filter(Boolean).forEach((r) => {
+      overwrites.push({
+        id: r.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.ReadMessageHistory,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.Connect,
+          PermissionsBitField.Flags.Speak,
+        ],
+      });
+    });
+  }
+
+  overwrites.push({
+    id: botMember.id,
+    allow: [
+      PermissionsBitField.Flags.ViewChannel,
+      PermissionsBitField.Flags.ReadMessageHistory,
+      PermissionsBitField.Flags.SendMessages,
+      PermissionsBitField.Flags.ManageChannels,
+      PermissionsBitField.Flags.ManageMessages,
+      PermissionsBitField.Flags.Connect,
+      PermissionsBitField.Flags.Speak,
+    ],
+  });
+
+  return overwrites;
+}
+
+async function ensureChannel(guild, category, botMember, channelConfig) {
+  const type =
+    channelConfig.type === "voice"
+      ? ChannelType.GuildVoice
+      : ChannelType.GuildText;
+
+  let channel = getChannel(guild, channelConfig.name, type);
+
+  const permissionOverwrites = buildPermissionOverwrites(guild, botMember, channelConfig);
+
+  if (!channel) {
+    channel = await guild.channels.create({
+      name: channelConfig.name,
+      type,
+      parent: category.id,
+      permissionOverwrites,
+      reason: "สร้างห้องอัตโนมัติจากระบบ setup",
+    });
+  } else {
+    if (channel.parentId !== category.id) {
+      await channel.setParent(category.id);
+    }
+    await channel.permissionOverwrites.set(permissionOverwrites);
+  }
+
+  return channel;
+}
+
+async function ensureAllRoles(guild) {
+  for (const roleConfig of CONFIG.roles) {
+    await ensureRole(guild, roleConfig);
+  }
+}
+
+async function ensureFullStructure(guild) {
+  const botMember = await guild.members.fetchMe();
+
+  for (const section of CONFIG.structure) {
+    const category = await ensureCategory(guild, section.category);
+    for (const channelConfig of section.channels) {
+      await ensureChannel(guild, category, botMember, channelConfig);
+    }
+  }
+}
+
+function buildVerifyPanel() {
+  const row1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(CONFIG.ids.verifyButton)
+      .setLabel("กดรับยศ Verified")
+      .setStyle(ButtonStyle.Success)
+  );
+
+  const row2 = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(CONFIG.ids.businessSelect)
+      .setPlaceholder("เลือกยศสายธุรกิจของคุณ")
+      .setMinValues(0)
+      .setMaxValues(CONFIG.selfAssignBusinessRoles.length)
+      .addOptions(
+        CONFIG.selfAssignBusinessRoles.map((roleName) => ({
+          label: roleName,
+          value: roleName,
+        }))
+      )
+  );
+
+  return {
+    content:
+      "## 🎭 ศูนย์รับยศ\n" +
+      `1. กดปุ่มเพื่อรับยศ **${CONFIG.verifyRole}**\n` +
+      "2. เลือกยศสายธุรกิจที่คุณสนใจจากเมนูด้านล่าง\n" +
+      "3. หลังรับยศแล้ว ห้องต่าง ๆ จะเปิดอัตโนมัติ",
+    components: [row1, row2],
+  };
+}
+
+async function sendOrRefreshVerifyPanel(guild) {
+  const channel = getChannel(guild, "🎭│รับยศ", ChannelType.GuildText);
+  if (!channel) return false;
+
+  await channel.send(buildVerifyPanel());
+  return true;
+}
+
+function findStatChannel(guild, prefix) {
+  return guild.channels.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildVoice &&
+      typeof ch.name === "string" &&
+      ch.name.startsWith(prefix)
+  ) || null;
+}
+
+async function updateStatsForGuild(guild) {
+  try {
+    await guild.members.fetch();
+
+    const totalMembers = guild.memberCount;
+    const botCount = guild.members.cache.filter((m) => m.user.bot).size;
+    const onlineCount = guild.members.cache.filter(
+      (m) => !m.user.bot && m.presence && m.presence.status !== "offline"
+    ).size;
+
+    const statsCategory = getChannel(guild, "📊 SERVER STATUS", ChannelType.GuildCategory);
+    if (!statsCategory) return;
+
+    const entries = [
+      { prefix: "👥 สมาชิกทั้งหมด: ", value: totalMembers },
+      { prefix: "🟢 ออนไลน์: ", value: onlineCount },
+      { prefix: "🤖 บอท: ", value: botCount },
+    ];
+
+    for (const entry of entries) {
+      let ch = findStatChannel(guild, entry.prefix);
+      const newName = `${entry.prefix}${entry.value}`;
+
+      if (!ch) {
+        ch = await guild.channels.create({
+          name: newName,
+          type: ChannelType.GuildVoice,
+          parent: statsCategory.id,
+          permissionOverwrites: [
+            {
+              id: guild.roles.everyone.id,
+              allow: [PermissionsBitField.Flags.ViewChannel],
+              deny: [PermissionsBitField.Flags.Connect],
+            },
+          ],
+          reason: "สร้างห้องสถิติอัตโนมัติ",
+        });
+      } else if (ch.name !== newName) {
+        await ch.setName(newName);
+      }
+
+      if (ch.parentId !== statsCategory.id) {
+        await ch.setParent(statsCategory.id);
+      }
+    }
+  } catch (error) {
+    console.error("Stats update error:", error);
+  }
+}
+
+async function memberHasAnyRole(member, roleNames) {
+  return roleNames.some((name) => {
+    const role = getRole(member.guild, name);
+    return role ? member.roles.cache.has(role.id) : false;
+  });
+}
+
+// =========================
+// COMMANDS
+// =========================
+client.once("clientReady", async () => {
   console.log(`บอทออนไลน์แล้ว ${client.user.tag}`);
-  console.log('ใช้ !setupverify เพื่อสร้างระบบรับยศ');
-  console.log('ใช้ !setupstats เพื่อสร้างห้องสถิติ');
+  console.log("ใช้ !setupfull เพื่อสร้างห้อง ยศ สถิติ และระบบรับยศทั้งหมด");
 
   for (const guild of client.guilds.cache.values()) {
     await updateStatsForGuild(guild);
@@ -51,375 +472,196 @@ client.once('clientReady', async () => {
   }, 5 * 60 * 1000);
 });
 
-function findChannelByName(guild, name, type = null) {
-  return guild.channels.cache.find((ch) => {
-    if (type !== null) return ch.name === name && ch.type === type;
-    return ch.name === name;
-  });
-}
+client.on("messageCreate", async (message) => {
+  if (message.author.bot || !message.guild) return;
+  if (!message.content.startsWith(PREFIX)) return;
 
-function findVoiceChannelStartsWith(guild, prefix) {
-  return guild.channels.cache.find(
-    (ch) =>
-      ch.type === ChannelType.GuildVoice &&
-      typeof ch.name === 'string' &&
-      ch.name.startsWith(prefix)
-  );
-}
+  const command = message.content.slice(PREFIX.length).trim().toLowerCase();
 
-async function sendVerifyMessage(channel) {
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(VERIFY_BUTTON_ID)
-      .setLabel(`กดเพื่อรับยศ ${ROLE_NAME}`)
-      .setStyle(ButtonStyle.Success)
-  );
-
-  await channel.send({
-    content: `ยินดีต้อนรับ\n\nกดปุ่มด้านล่างเพื่อรับยศ **${ROLE_NAME}** แล้วระบบจะเปิดห้องใช้งานให้คุณอัตโนมัติ`,
-    components: [row],
-  });
-}
-
-async function ensureStatChannel(guild, category, prefix, value) {
-  const targetName = `${prefix}${value}`;
-  let channel = findVoiceChannelStartsWith(guild, prefix);
-
-  if (!channel) {
-    channel = await guild.channels.create({
-      name: targetName,
-      type: ChannelType.GuildVoice,
-      parent: category.id,
-      permissionOverwrites: [
-        {
-          id: guild.roles.everyone.id,
-          allow: [PermissionsBitField.Flags.ViewChannel],
-          deny: [PermissionsBitField.Flags.Connect],
-        },
-      ],
-      reason: 'สร้างห้องสถิติสมาชิก',
-    });
-    return;
-  }
-
-  if (channel.name !== targetName) {
-    await channel.setName(targetName, 'อัปเดตสถิติสมาชิก');
-  }
-
-  if (channel.parentId !== category.id) {
-    await channel.setParent(category.id);
-  }
-}
-
-async function getStats(guild) {
-  await guild.members.fetch();
-
-  const totalMembers = guild.memberCount;
-  const members = guild.members.cache;
-
-  const botCount = members.filter((m) => m.user.bot).size;
-  const onlineCount = members.filter(
-    (m) => !m.user.bot && m.presence && m.presence.status !== 'offline'
-  ).size;
-
-  return { totalMembers, botCount, onlineCount };
-}
-
-async function updateStatsForGuild(guild) {
-  try {
-    let category = findChannelByName(
-      guild,
-      STATS_CATEGORY_NAME,
-      ChannelType.GuildCategory
-    );
-
-    if (!category) {
-      category = await guild.channels.create({
-        name: STATS_CATEGORY_NAME,
-        type: ChannelType.GuildCategory,
-        reason: 'สร้างหมวดสถิติสมาชิก',
-      });
-    }
-
-    const { totalMembers, botCount, onlineCount } = await getStats(guild);
-
-    await ensureStatChannel(guild, category, TOTAL_CHANNEL_PREFIX, totalMembers);
-    await ensureStatChannel(guild, category, ONLINE_CHANNEL_PREFIX, onlineCount);
-    await ensureStatChannel(guild, category, BOT_CHANNEL_PREFIX, botCount);
-  } catch (error) {
-    console.error(`อัปเดตสถิติไม่สำเร็จใน ${guild.name}:`, error.message);
-  }
-}
-
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-  if (!message.guild) return;
-
-  // ===== setup verify =====
-  if (message.content === '!setupverify') {
+  if (command === "setupfull") {
     try {
       if (
         !message.member.permissions.has(PermissionsBitField.Flags.Administrator) &&
         !message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)
       ) {
-        return message.reply('คำสั่งนี้ใช้ได้เฉพาะแอดมินหรือคนที่มีสิทธิ์จัดการเซิร์ฟเวอร์');
-      }
-
-      const guild = message.guild;
-      const botMember = await guild.members.fetchMe();
-
-      const needPerms = [
-        PermissionsBitField.Flags.ManageChannels,
-        PermissionsBitField.Flags.ManageRoles,
-        PermissionsBitField.Flags.SendMessages,
-        PermissionsBitField.Flags.ViewChannel,
-      ];
-
-      const missingPerms = needPerms.filter(
-        (perm) => !botMember.permissions.has(perm)
-      );
-
-      if (missingPerms.length > 0) {
-        return message.reply(
-          'บอทยังมีสิทธิ์ไม่ครบ ต้องมีอย่างน้อย: Manage Channels, Manage Roles, Send Messages, View Channels'
-        );
-      }
-
-      let memberRole = guild.roles.cache.find((role) => role.name === ROLE_NAME);
-
-      if (!memberRole) {
-        memberRole = await guild.roles.create({
-          name: ROLE_NAME,
-          reason: 'สร้างยศสำหรับระบบกดรับยศอัตโนมัติ',
-        });
-      }
-
-      if (memberRole.position >= botMember.roles.highest.position) {
-        return message.reply(
-          `บอทแจกยศ ${ROLE_NAME} ไม่ได้ เพราะ role ของบอทต้องอยู่สูงกว่า role ${ROLE_NAME}`
-        );
-      }
-
-      let category = findChannelByName(guild, CATEGORY_NAME, ChannelType.GuildCategory);
-
-      if (!category) {
-        category = await guild.channels.create({
-          name: CATEGORY_NAME,
-          type: ChannelType.GuildCategory,
-          reason: 'สร้างหมวดสำหรับระบบเริ่มต้น/รับยศ',
-        });
-      }
-
-      let verifyChannel = findChannelByName(guild, VERIFY_CHANNEL_NAME, ChannelType.GuildText);
-
-      if (!verifyChannel) {
-        verifyChannel = await guild.channels.create({
-          name: VERIFY_CHANNEL_NAME,
-          type: ChannelType.GuildText,
-          parent: category.id,
-          reason: 'สร้างห้องกดรับยศ',
-          permissionOverwrites: [
-            {
-              id: guild.roles.everyone.id,
-              allow: [
-                PermissionsBitField.Flags.ViewChannel,
-                PermissionsBitField.Flags.ReadMessageHistory,
-              ],
-              deny: [PermissionsBitField.Flags.SendMessages],
-            },
-            {
-              id: botMember.id,
-              allow: [
-                PermissionsBitField.Flags.ViewChannel,
-                PermissionsBitField.Flags.SendMessages,
-                PermissionsBitField.Flags.ReadMessageHistory,
-              ],
-            },
-          ],
-        });
-      } else if (verifyChannel.parentId !== category.id) {
-        await verifyChannel.setParent(category.id);
-      }
-
-      let chatChannel = findChannelByName(guild, CHAT_CHANNEL_NAME, ChannelType.GuildText);
-
-      if (!chatChannel) {
-        chatChannel = await guild.channels.create({
-          name: CHAT_CHANNEL_NAME,
-          type: ChannelType.GuildText,
-          parent: category.id,
-          reason: 'สร้างห้องพูดคุยสำหรับคนที่ได้รับยศแล้ว',
-          permissionOverwrites: [
-            {
-              id: guild.roles.everyone.id,
-              deny: [PermissionsBitField.Flags.ViewChannel],
-            },
-            {
-              id: memberRole.id,
-              allow: [
-                PermissionsBitField.Flags.ViewChannel,
-                PermissionsBitField.Flags.SendMessages,
-                PermissionsBitField.Flags.ReadMessageHistory,
-              ],
-            },
-            {
-              id: botMember.id,
-              allow: [
-                PermissionsBitField.Flags.ViewChannel,
-                PermissionsBitField.Flags.SendMessages,
-                PermissionsBitField.Flags.ReadMessageHistory,
-              ],
-            },
-          ],
-        });
-      } else {
-        await chatChannel.permissionOverwrites.edit(guild.roles.everyone.id, {
-          ViewChannel: false,
-        });
-
-        await chatChannel.permissionOverwrites.edit(memberRole.id, {
-          ViewChannel: true,
-          SendMessages: true,
-          ReadMessageHistory: true,
-        });
-      }
-
-      await sendVerifyMessage(verifyChannel);
-
-      await message.reply(
-        `ตั้งค่าระบบรับยศเรียบร้อยแล้ว\n- role: ${ROLE_NAME}\n- หมวด: ${CATEGORY_NAME}\n- ห้องรับยศ: ${VERIFY_CHANNEL_NAME}\n- ห้องสมาชิก: ${CHAT_CHANNEL_NAME}`
-      );
-    } catch (error) {
-      console.error('SETUP VERIFY ERROR:', error);
-      await message.reply('เกิดข้อผิดพลาดระหว่างสร้างระบบรับยศ');
-    }
-  }
-
-  // ===== send verify again =====
-  if (message.content === '!sendverify') {
-    try {
-      const verifyChannel = findChannelByName(
-        message.guild,
-        VERIFY_CHANNEL_NAME,
-        ChannelType.GuildText
-      );
-
-      if (!verifyChannel) {
-        return message.reply('ยังไม่พบห้องรับยศ กรุณาใช้ !setupverify ก่อน');
-      }
-
-      await sendVerifyMessage(verifyChannel);
-      await message.reply('ส่งปุ่มรับยศให้อีกครั้งแล้ว');
-    } catch (error) {
-      console.error('SEND VERIFY ERROR:', error);
-      await message.reply('ส่งปุ่มไม่สำเร็จ');
-    }
-  }
-
-  // ===== setup stats =====
-  if (message.content === '!setupstats') {
-    try {
-      if (
-        !message.member.permissions.has(PermissionsBitField.Flags.Administrator) &&
-        !message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)
-      ) {
-        return message.reply('คำสั่งนี้ใช้ได้เฉพาะแอดมินหรือคนที่มีสิทธิ์จัดการเซิร์ฟเวอร์');
+        return message.reply("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
       }
 
       const botMember = await message.guild.members.fetchMe();
-
       const needPerms = [
-        PermissionsBitField.Flags.ManageChannels,
         PermissionsBitField.Flags.ViewChannel,
+        PermissionsBitField.Flags.SendMessages,
+        PermissionsBitField.Flags.ReadMessageHistory,
+        PermissionsBitField.Flags.ManageChannels,
+        PermissionsBitField.Flags.ManageRoles,
       ];
 
-      const missingPerms = needPerms.filter(
-        (perm) => !botMember.permissions.has(perm)
-      );
-
-      if (missingPerms.length > 0) {
-        return message.reply('บอทยังมีสิทธิ์ไม่ครบ ต้องมีอย่างน้อย: Manage Channels, View Channels');
+      const missing = needPerms.filter((perm) => !botMember.permissions.has(perm));
+      if (missing.length) {
+        return message.reply(
+          "บอทยังมีสิทธิ์ไม่ครบ ต้องมี: View Channels, Send Messages, Read Message History, Manage Channels, Manage Roles"
+        );
       }
 
+      await message.reply("กำลังสร้างยศ ห้อง และระบบทั้งหมด...");
+
+      await ensureAllRoles(message.guild);
+      await ensureFullStructure(message.guild);
       await updateStatsForGuild(message.guild);
-      await message.reply('สร้าง/อัปเดตห้องสถิติเรียบร้อยแล้ว');
+      await sendOrRefreshVerifyPanel(message.guild);
+
+      await message.channel.send("ตั้งค่าทุกอย่างเรียบร้อยแล้ว ✅");
     } catch (error) {
-      console.error('SETUP STATS ERROR:', error);
-      await message.reply('เกิดข้อผิดพลาดระหว่างสร้างห้องสถิติ');
+      console.error("setupfull error:", error);
+      await message.reply("เกิดข้อผิดพลาดระหว่างตั้งค่าระบบ");
+    }
+  }
+
+  if (command === "setupstats") {
+    try {
+      await updateStatsForGuild(message.guild);
+      await message.reply("อัปเดตห้องสถิติเรียบร้อยแล้ว");
+    } catch (error) {
+      console.error(error);
+      await message.reply("อัปเดตห้องสถิติไม่สำเร็จ");
+    }
+  }
+
+  if (command === "sendroles") {
+    try {
+      const ok = await sendOrRefreshVerifyPanel(message.guild);
+      if (!ok) return message.reply("ยังไม่พบห้อง 🎭│รับยศ");
+      await message.reply("ส่งแผงรับยศแล้ว");
+    } catch (error) {
+      console.error(error);
+      await message.reply("ส่งแผงรับยศไม่สำเร็จ");
     }
   }
 });
 
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
+// =========================
+// INTERACTIONS
+// =========================
+client.on("interactionCreate", async (interaction) => {
   if (!interaction.guild) return;
 
-  if (interaction.customId === VERIFY_BUTTON_ID) {
-    try {
-      const guild = interaction.guild;
-      const member = await guild.members.fetch(interaction.user.id);
-      const role = guild.roles.cache.find((r) => r.name === ROLE_NAME);
-      const botMember = await guild.members.fetchMe();
+  if (interaction.isButton()) {
+    if (interaction.customId === CONFIG.ids.verifyButton) {
+      try {
+        const guild = interaction.guild;
+        const member = await guild.members.fetch(interaction.user.id);
+        const role = getRole(guild, CONFIG.verifyRole);
+        const botMember = await guild.members.fetchMe();
 
-      if (!role) {
+        if (!role) {
+          return interaction.reply({
+            content: `ไม่พบ role ${CONFIG.verifyRole}`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        if (role.position >= botMember.roles.highest.position) {
+          return interaction.reply({
+            content: `บอทไม่สามารถให้ยศ ${CONFIG.verifyRole} ได้ เพราะ role ของบอทต้องอยู่สูงกว่า`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        if (member.roles.cache.has(role.id)) {
+          return interaction.reply({
+            content: `คุณมียศ ${CONFIG.verifyRole} อยู่แล้ว`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        await member.roles.add(role);
+
+        const memberRole = getRole(guild, "🌿 Member");
+        if (memberRole && !member.roles.cache.has(memberRole.id)) {
+          if (memberRole.position < botMember.roles.highest.position) {
+            await member.roles.add(memberRole).catch(() => {});
+          }
+        }
+
         return interaction.reply({
-          content: `ไม่พบ role ${ROLE_NAME}`,
-          ephemeral: true,
+          content: `รับยศ ${CONFIG.verifyRole} เรียบร้อยแล้ว 🎉`,
+          flags: MessageFlags.Ephemeral,
         });
-      }
-
-      if (role.position >= botMember.roles.highest.position) {
+      } catch (error) {
+        console.error("verify button error:", error);
         return interaction.reply({
-          content: `บอทไม่สามารถให้ยศ ${ROLE_NAME} ได้ เพราะ role ของบอทต้องอยู่สูงกว่า`,
-          ephemeral: true,
-        });
-      }
-
-      if (member.roles.cache.has(role.id)) {
-        return interaction.reply({
-          content: `คุณมียศ ${ROLE_NAME} อยู่แล้ว`,
-          ephemeral: true,
-        });
-      }
-
-      await member.roles.add(role);
-
-      return interaction.reply({
-        content: `รับยศ ${ROLE_NAME} เรียบร้อยแล้ว 🎉`,
-        ephemeral: true,
-      });
-    } catch (error) {
-      console.error('BUTTON ERROR:', error);
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          content: 'เกิดข้อผิดพลาด',
-          ephemeral: true,
+          content: "เกิดข้อผิดพลาด",
+          flags: MessageFlags.Ephemeral,
         }).catch(() => {});
-      } else {
-        await interaction.reply({
-          content: 'เกิดข้อผิดพลาด',
-          ephemeral: true,
+      }
+    }
+  }
+
+  if (interaction.isStringSelectMenu()) {
+    if (interaction.customId === CONFIG.ids.businessSelect) {
+      try {
+        const guild = interaction.guild;
+        const member = await guild.members.fetch(interaction.user.id);
+        const selected = interaction.values;
+
+        const botMember = await guild.members.fetchMe();
+        const businessRoles = CONFIG.selfAssignBusinessRoles
+          .map((name) => getRole(guild, name))
+          .filter(Boolean);
+
+        for (const role of businessRoles) {
+          if (role.position >= botMember.roles.highest.position) continue;
+
+          if (selected.includes(role.name)) {
+            if (!member.roles.cache.has(role.id)) {
+              await member.roles.add(role).catch(() => {});
+            }
+          } else {
+            if (member.roles.cache.has(role.id)) {
+              await member.roles.remove(role).catch(() => {});
+            }
+          }
+        }
+
+        return interaction.reply({
+          content:
+            selected.length > 0
+              ? `อัปเดตยศสายธุรกิจแล้ว: ${selected.join(", ")}`
+              : "ล้างยศสายธุรกิจทั้งหมดแล้ว",
+          flags: MessageFlags.Ephemeral,
+        });
+      } catch (error) {
+        console.error("select menu error:", error);
+        return interaction.reply({
+          content: "เกิดข้อผิดพลาด",
+          flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }
     }
   }
 });
 
-client.on('guildMemberAdd', async (member) => {
+// =========================
+// REALTIME STATS
+// =========================
+client.on("guildMemberAdd", async (member) => {
   await updateStatsForGuild(member.guild);
 });
 
-client.on('guildMemberRemove', async (member) => {
+client.on("guildMemberRemove", async (member) => {
   await updateStatsForGuild(member.guild);
 });
 
-client.on('presenceUpdate', async (oldPresence, newPresence) => {
+client.on("presenceUpdate", async (oldPresence, newPresence) => {
   const guild = newPresence?.guild || oldPresence?.guild;
   if (!guild) return;
   await updateStatsForGuild(guild);
 });
 
-client.on('error', console.error);
-process.on('unhandledRejection', console.error);
+// =========================
+// SAFETY
+// =========================
+client.on("error", console.error);
+process.on("unhandledRejection", console.error);
 
 client.login(TOKEN);
