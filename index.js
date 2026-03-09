@@ -21,12 +21,12 @@ if (!TOKEN) {
 }
 
 const CONFIG = {
-  memberRoleId: "1347851123364593753", // Member เดิมของคุณ
+  memberRoleId: "1347851123364593753",
   verifyButtonId: "main_verify_button",
   archiveCategoryName: "🗃️ ห้องเก่า",
   statsCategoryName: "📊 SERVER STATUS",
 
-  roles: [
+  managedRoles: [
     { name: "👑 เจ้าของธุรกิจ", color: 0xe91e63, hoist: true, aliases: ["founder"] },
     { name: "🛡 แอดมิน สรุปผล", color: 0xf44336, hoist: true, aliases: ["admin"] },
     { name: "🎓 ทีมงาน", color: 0x2196f3, hoist: true, aliases: ["staff", "team"] },
@@ -54,9 +54,9 @@ const CONFIG = {
           seed: [
             "# 📜 กฎของเซิร์ฟเวอร์",
             "1. เคารพกันและกัน",
-            "2. ห้ามสแปม / ห้ามปั่น",
-            "3. ห้ามโฆษณาโดยไม่ได้รับอนุญาต",
-            "4. ใช้ห้องให้ตรงประเภท"
+            "2. ห้ามสแปมหรือปั่น",
+            "3. ใช้ห้องให้ตรงประเภท",
+            "4. ห้ามโฆษณาโดยไม่ได้รับอนุญาต"
           ]
         },
         {
@@ -113,34 +113,10 @@ const CONFIG = {
     {
       category: "💬 COMMUNITY",
       channels: [
-        {
-          type: "text",
-          name: "💬│พูดคุย",
-          aliases: ["พูดคุย", "chat"],
-          memberOnly: true,
-          seed: ["# 💬 พูดคุย", "ห้องพูดคุยทั่วไปของคอมมูนิตี้"]
-        },
-        {
-          type: "text",
-          name: "📷│แชร์ผลงาน",
-          aliases: ["แชร์ผลงาน", "ผลงาน", "showcase", "ช่องส่งผลงาน"],
-          memberOnly: true,
-          seed: ["# 📷 แชร์ผลงาน", "อัปเดตผลงานหรือสิ่งที่คุณกำลังทำอยู่ได้ที่นี่"]
-        },
-        {
-          type: "text",
-          name: "❓│ถามตอบ",
-          aliases: ["ถามตอบ", "qna"],
-          memberOnly: true,
-          seed: ["# ❓ ถามตอบ", "ถามคำถามเกี่ยวกับธุรกิจ การทำงาน หรือการใช้งานเซิร์ฟเวอร์"]
-        },
-        {
-          type: "text",
-          name: "📈│ผลลัพธ์",
-          aliases: ["result", "ผลลัพธ์", "result-ผลลัพธ์"],
-          memberOnly: true,
-          seed: ["# 📈 ผลลัพธ์", "แชร์ผลลัพธ์ ความคืบหน้า และชัยชนะของคุณ"]
-        }
+        { type: "text", name: "💬│พูดคุย", aliases: ["พูดคุย", "chat"], memberOnly: true, seed: ["# 💬 พูดคุย", "ห้องพูดคุยทั่วไปของคอมมูนิตี้"] },
+        { type: "text", name: "📷│แชร์ผลงาน", aliases: ["แชร์ผลงาน", "ผลงาน", "showcase", "ช่องส่งผลงาน"], memberOnly: true, seed: ["# 📷 แชร์ผลงาน", "อัปเดตผลงานหรือสิ่งที่คุณกำลังทำอยู่ได้ที่นี่"] },
+        { type: "text", name: "❓│ถามตอบ", aliases: ["ถามตอบ", "qna"], memberOnly: true, seed: ["# ❓ ถามตอบ", "ถามคำถามเกี่ยวกับธุรกิจ การทำงาน หรือการใช้งานเซิร์ฟเวอร์"] },
+        { type: "text", name: "📈│ผลลัพธ์", aliases: ["result", "ผลลัพธ์", "result-ผลลัพธ์"], memberOnly: true, seed: ["# 📈 ผลลัพธ์", "แชร์ผลลัพธ์ ความคืบหน้า และชัยชนะของคุณ"] }
       ]
     },
     {
@@ -208,14 +184,10 @@ const client = new Client({
   ],
 });
 
-/* helpers */
+/* ---------------- helpers ---------------- */
 
 function normalizeName(name = "") {
-  return name
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s|_-]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return name.toLowerCase().replace(/[^\p{L}\p{N}\s|_-]/gu, "").replace(/\s+/g, " ").trim();
 }
 
 function simplifiedName(name = "") {
@@ -275,7 +247,7 @@ async function dedupeRoles(guild) {
     });
   }
 
-  for (const cfg of CONFIG.roles) {
+  for (const cfg of CONFIG.managedRoles) {
     const role = getRoleByName(guild, cfg.name);
     if (role) {
       canonicalRoles.push({
@@ -356,9 +328,7 @@ async function ensureCategory(guild, name) {
     const target = simplifiedName(name);
     category =
       guild.channels.cache.find(
-        (c) =>
-          c.type === ChannelType.GuildCategory &&
-          simplifiedName(c.name) === target
+        (c) => c.type === ChannelType.GuildCategory && simplifiedName(c.name) === target
       ) || null;
   }
 
@@ -669,9 +639,7 @@ async function archiveUnmanagedChannels(guild, managedIds) {
     if (
       channel.type !== ChannelType.GuildText &&
       channel.type !== ChannelType.GuildVoice
-    ) {
-      continue;
-    }
+    ) continue;
 
     if (managedIds.has(channel.id)) continue;
     if (channel.parentId === archiveCategory.id) continue;
@@ -687,6 +655,66 @@ async function archiveUnmanagedChannels(guild, managedIds) {
   return moved;
 }
 
+async function auditServer(guild) {
+  const memberRole = getMemberRole(guild);
+
+  let duplicateRoleGroups = 0;
+  let duplicateChannelGroups = 0;
+  let missingManagedRoles = 0;
+  let memberProtectedBroken = 0;
+
+  for (const roleCfg of CONFIG.managedRoles) {
+    const role = getRoleByName(guild, roleCfg.name);
+    if (!role) missingManagedRoles++;
+  }
+
+  const roleBuckets = new Map();
+  for (const role of guild.roles.cache.values()) {
+    const key = simplifiedName(role.name);
+    if (!roleBuckets.has(key)) roleBuckets.set(key, []);
+    roleBuckets.get(key).push(role);
+  }
+  for (const group of roleBuckets.values()) {
+    if (group.length > 1) duplicateRoleGroups++;
+  }
+
+  const channelBuckets = new Map();
+  for (const channel of guild.channels.cache.values()) {
+    if (
+      channel.type !== ChannelType.GuildText &&
+      channel.type !== ChannelType.GuildVoice
+    ) continue;
+
+    const key = `${channel.type}:${simplifiedName(channel.name)}`;
+    if (!channelBuckets.has(key)) channelBuckets.set(key, []);
+    channelBuckets.get(key).push(channel);
+  }
+  for (const group of channelBuckets.values()) {
+    if (group.length > 1) duplicateChannelGroups++;
+  }
+
+  if (memberRole) {
+    for (const section of CONFIG.layout) {
+      for (const channelCfg of section.channels) {
+        if (!channelCfg.memberOnly) continue;
+        const ch = getExactChannel(guild, channelCfg.name, getChannelType(channelCfg.type));
+        if (!ch) continue;
+
+        const ow = ch.permissionOverwrites.cache.get(memberRole.id);
+        if (!ow) memberProtectedBroken++;
+      }
+    }
+  }
+
+  return {
+    memberRoleFound: !!memberRole,
+    duplicateRoleGroups,
+    duplicateChannelGroups,
+    missingManagedRoles,
+    memberProtectedBroken,
+  };
+}
+
 /* events */
 
 client.once("clientReady", async () => {
@@ -696,6 +724,7 @@ client.once("clientReady", async () => {
   console.log("ใช้ !archiveold เพื่อย้ายห้องเก่าไปเก็บ");
   console.log("ใช้ !seedrooms เพื่อเติมข้อความห้องใหม่");
   console.log("ใช้ !sendverify เพื่อรีเฟรชปุ่มรับยศ");
+  console.log("ใช้ !audit เพื่อวิเคราะห์เซิร์ฟเวอร์");
 
   for (const guild of client.guilds.cache.values()) {
     await updateStats(guild).catch(() => {});
@@ -732,9 +761,7 @@ client.on("messageCreate", async (message) => {
 
       const memberRole = getMemberRole(message.guild);
       if (!memberRole) {
-        return message.reply(
-          `ไม่พบ role Member ตาม ID นี้: ${CONFIG.memberRoleId}`
-        );
+        return message.reply(`ไม่พบ role Member ตาม ID นี้: ${CONFIG.memberRoleId}`);
       }
 
       const botMember = await message.guild.members.fetchMe();
@@ -753,23 +780,21 @@ client.on("messageCreate", async (message) => {
         );
       }
 
-      const status = await message.reply(
-        `เริ่มจัดระเบียบโดยใช้ยศเดิม **${memberRole.name}**...`
-      );
+      const status = await message.reply(`เริ่มจัดระเบียบโดยใช้ยศเดิม **${memberRole.name}**...`);
 
-      await status.edit("1/6 กำลังเช็กและสร้าง role ที่จำเป็น...");
+      await status.edit("1/5 กำลังเช็กและสร้าง role ที่จำเป็น...");
       await ensureRoles(message.guild);
 
-      await status.edit("2/6 กำลังซิงก์ห้องเก่าเข้ากับโครงสร้างใหม่...");
+      await status.edit("2/5 กำลังซิงก์ห้องเก่าเข้ากับโครงสร้างใหม่...");
       await syncFullLayout(message.guild);
 
-      await status.edit("3/6 กำลังอัปเดตห้องสถิติ...");
+      await status.edit("3/5 กำลังอัปเดตห้องสถิติ...");
       await updateStats(message.guild);
 
-      await status.edit("4/6 กำลังรีเฟรชปุ่มรับยศ...");
+      await status.edit("4/5 กำลังรีเฟรชปุ่มรับยศ...");
       await refreshVerifyPanel(message.guild);
 
-      await status.edit("5/6 กำลังเติมข้อความให้ห้องว่าง...");
+      await status.edit("5/5 กำลังเติมข้อความให้ห้องว่าง...");
       const seeded = await seedAllRooms(message.guild);
 
       await status.edit(`เสร็จแล้ว ✅ เติมข้อความห้องใหม่ ${seeded} ห้อง`);
@@ -848,6 +873,23 @@ client.on("messageCreate", async (message) => {
       await message.reply("อัปเดตห้องสถิติไม่สำเร็จ");
     }
   }
+
+  if (cmd === "audit") {
+    try {
+      const report = await auditServer(message.guild);
+      await message.reply(
+        `## Audit Report\n` +
+        `Member role found: ${report.memberRoleFound ? "yes" : "no"}\n` +
+        `Duplicate role groups: ${report.duplicateRoleGroups}\n` +
+        `Duplicate channel groups: ${report.duplicateChannelGroups}\n` +
+        `Missing managed roles: ${report.missingManagedRoles}\n` +
+        `Member permission issues: ${report.memberProtectedBroken}`
+      );
+    } catch (error) {
+      console.error("audit error:", error);
+      await message.reply("วิเคราะห์เซิร์ฟเวอร์ไม่สำเร็จ");
+    }
+  }
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -889,12 +931,10 @@ client.on("interactionCreate", async (interaction) => {
       });
     } catch (error) {
       console.error("verify button error:", error);
-      return interaction
-        .reply({
-          content: "เกิดข้อผิดพลาด",
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      return interaction.reply({
+        content: "เกิดข้อผิดพลาด",
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
     }
   }
 });
