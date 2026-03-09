@@ -23,6 +23,8 @@ const CONFIG = {
   memberRoleId: "1347851123364593753",
   verifyButtonId: "main_verify_button",
 
+  // ใช้หมวดเดิมของคุณตาม ID นี้
+  startHereCategoryId: "1480603184207630346",
   startHereCategoryName: "✨ START HERE",
 
   startHereChannels: [
@@ -116,11 +118,11 @@ function findMatchingTextChannel(guild, name, aliases = []) {
 }
 
 async function ensureStartHereCategory(guild) {
-  let category = getExactChannel(
-    guild,
-    CONFIG.startHereCategoryName,
-    ChannelType.GuildCategory
-  );
+  let category = guild.channels.cache.get(CONFIG.startHereCategoryId) || null;
+
+  if (category && category.type !== ChannelType.GuildCategory) {
+    throw new Error("startHereCategoryId ไม่ใช่หมวดหมู่");
+  }
 
   if (!category) {
     category =
@@ -138,10 +140,10 @@ async function ensureStartHereCategory(guild) {
       reason: "สร้างหมวด START HERE",
     });
   } else if (category.name !== CONFIG.startHereCategoryName) {
-    await category.setName(CONFIG.startHereCategoryName);
+    await category.setName(CONFIG.startHereCategoryName).catch(() => {});
   }
 
-  // สำคัญ: คนทั่วไปต้องเห็นหมวดนี้
+  // เปิดหมวดให้ everyone เห็น
   await category.permissionOverwrites.set([
     {
       id: guild.roles.everyone.id,
@@ -153,12 +155,15 @@ async function ensureStartHereCategory(guild) {
   return category;
 }
 
-function buildPublicReadOnlyOverwrites(guild, botMember, channelName) {
+function buildStartHereOverwrites(guild, botMember, channelName) {
   const overwrites = [
     {
       id: guild.roles.everyone.id,
-      allow: [PermissionsBitField.Flags.ViewChannel],
-      deny: [],
+      allow: [
+        PermissionsBitField.Flags.ViewChannel,
+        PermissionsBitField.Flags.ReadMessageHistory,
+      ],
+      deny: [PermissionsBitField.Flags.SendMessages],
     },
     {
       id: botMember.id,
@@ -173,21 +178,7 @@ function buildPublicReadOnlyOverwrites(guild, botMember, channelName) {
     },
   ];
 
-  // ห้องรับยศต้องให้คนทั่วไปเห็นและกดปุ่มได้ แต่ไม่ต้องพิมพ์เอง
-  if (channelName === "🎭│รับยศ") {
-    overwrites[0] = {
-      id: guild.roles.everyone.id,
-      allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory],
-      deny: [PermissionsBitField.Flags.SendMessages],
-    };
-  } else {
-    overwrites[0] = {
-      id: guild.roles.everyone.id,
-      allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory],
-      deny: [PermissionsBitField.Flags.SendMessages],
-    };
-  }
-
+  // ห้องรับยศเหมือนห้องอื่น แต่มีปุ่มของบอท
   return overwrites;
 }
 
@@ -202,7 +193,7 @@ async function ensureStartHereChannels(guild) {
       channelCfg.aliases || []
     );
 
-    const overwrites = buildPublicReadOnlyOverwrites(
+    const overwrites = buildStartHereOverwrites(
       guild,
       botMember,
       channelCfg.name
@@ -218,14 +209,19 @@ async function ensureStartHereChannels(guild) {
       });
     } else {
       if (channel.name !== channelCfg.name) {
-        await channel.setName(channelCfg.name);
+        await channel.setName(channelCfg.name).catch(() => {});
       }
 
+      // สำคัญ: ย้ายเข้า category id นี้ตรง ๆ
       if (channel.parentId !== category.id) {
-        await channel.setParent(category.id, { lockPermissions: false });
+        await channel.setParent(category.id, { lockPermissions: false }).catch(() => {});
       }
 
-      await channel.permissionOverwrites.set(overwrites);
+      // สำคัญ: เขียนทับ permission ห้องใหม่
+      await channel.permissionOverwrites.set(
+        overwrites,
+        "รีเซ็ต permission ห้อง START HERE"
+      ).catch(console.error);
     }
   }
 }
