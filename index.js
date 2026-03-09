@@ -12,11 +12,18 @@ const {
 
 const TOKEN = process.env.TOKEN;
 
-const ROLE_NAME = 'Member';
+// ===== ระบบรับยศ =====
+const ROLE_NAME = 'Verified';
 const CATEGORY_NAME = '📌 เริ่มต้น';
 const VERIFY_CHANNEL_NAME = '✅│รับยศ';
 const CHAT_CHANNEL_NAME = '💬│พูดคุย';
 const VERIFY_BUTTON_ID = 'verify_member_role';
+
+// ===== ระบบสถิติ =====
+const STATS_CATEGORY_NAME = '📊 SERVER STATUS';
+const TOTAL_CHANNEL_PREFIX = '👥 สมาชิกทั้งหมด: ';
+const ONLINE_CHANNEL_PREFIX = '🟢 ออนไลน์: ';
+const BOT_CHANNEL_PREFIX = '🤖 บอท: ';
 
 const client = new Client({
   intents: [
@@ -24,44 +31,137 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildPresences,
   ],
 });
 
-client.once('clientReady', () => {
+client.once('clientReady', async () => {
   console.log(`บอทออนไลน์แล้ว ${client.user.tag}`);
-  console.log('ใช้คำสั่ง !setupverify ในห้องไหนก็ได้ เพื่อให้บอทสร้างระบบให้ทั้งหมด');
+  console.log('ใช้ !setupverify เพื่อสร้างระบบรับยศ');
+  console.log('ใช้ !setupstats เพื่อสร้างห้องสถิติ');
+
+  for (const guild of client.guilds.cache.values()) {
+    await updateStatsForGuild(guild);
+  }
+
+  setInterval(async () => {
+    for (const guild of client.guilds.cache.values()) {
+      await updateStatsForGuild(guild);
+    }
+  }, 5 * 60 * 1000);
 });
 
-async function findChannelByName(guild, name, type = null) {
+function findChannelByName(guild, name, type = null) {
   return guild.channels.cache.find((ch) => {
     if (type !== null) return ch.name === name && ch.type === type;
     return ch.name === name;
   });
 }
 
+function findVoiceChannelStartsWith(guild, prefix) {
+  return guild.channels.cache.find(
+    (ch) =>
+      ch.type === ChannelType.GuildVoice &&
+      typeof ch.name === 'string' &&
+      ch.name.startsWith(prefix)
+  );
+}
+
 async function sendVerifyMessage(channel) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(VERIFY_BUTTON_ID)
-      .setLabel('กดเพื่อรับยศ Member')
+      .setLabel(`กดเพื่อรับยศ ${ROLE_NAME}`)
       .setStyle(ButtonStyle.Success)
   );
 
   await channel.send({
-    content:
-      'ยินดีต้อนรับ\n\nกดปุ่มด้านล่างเพื่อรับยศ **Member** แล้วระบบจะเปิดห้องใช้งานให้คุณอัตโนมัติ',
+    content: `ยินดีต้อนรับ\n\nกดปุ่มด้านล่างเพื่อรับยศ **${ROLE_NAME}** แล้วระบบจะเปิดห้องใช้งานให้คุณอัตโนมัติ`,
     components: [row],
   });
+}
+
+async function ensureStatChannel(guild, category, prefix, value) {
+  const targetName = `${prefix}${value}`;
+  let channel = findVoiceChannelStartsWith(guild, prefix);
+
+  if (!channel) {
+    channel = await guild.channels.create({
+      name: targetName,
+      type: ChannelType.GuildVoice,
+      parent: category.id,
+      permissionOverwrites: [
+        {
+          id: guild.roles.everyone.id,
+          allow: [PermissionsBitField.Flags.ViewChannel],
+          deny: [PermissionsBitField.Flags.Connect],
+        },
+      ],
+      reason: 'สร้างห้องสถิติสมาชิก',
+    });
+    return;
+  }
+
+  if (channel.name !== targetName) {
+    await channel.setName(targetName, 'อัปเดตสถิติสมาชิก');
+  }
+
+  if (channel.parentId !== category.id) {
+    await channel.setParent(category.id);
+  }
+}
+
+async function getStats(guild) {
+  await guild.members.fetch();
+
+  const totalMembers = guild.memberCount;
+  const members = guild.members.cache;
+
+  const botCount = members.filter((m) => m.user.bot).size;
+  const onlineCount = members.filter(
+    (m) => !m.user.bot && m.presence && m.presence.status !== 'offline'
+  ).size;
+
+  return { totalMembers, botCount, onlineCount };
+}
+
+async function updateStatsForGuild(guild) {
+  try {
+    let category = findChannelByName(
+      guild,
+      STATS_CATEGORY_NAME,
+      ChannelType.GuildCategory
+    );
+
+    if (!category) {
+      category = await guild.channels.create({
+        name: STATS_CATEGORY_NAME,
+        type: ChannelType.GuildCategory,
+        reason: 'สร้างหมวดสถิติสมาชิก',
+      });
+    }
+
+    const { totalMembers, botCount, onlineCount } = await getStats(guild);
+
+    await ensureStatChannel(guild, category, TOTAL_CHANNEL_PREFIX, totalMembers);
+    await ensureStatChannel(guild, category, ONLINE_CHANNEL_PREFIX, onlineCount);
+    await ensureStatChannel(guild, category, BOT_CHANNEL_PREFIX, botCount);
+  } catch (error) {
+    console.error(`อัปเดตสถิติไม่สำเร็จใน ${guild.name}:`, error.message);
+  }
 }
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
 
+  // ===== setup verify =====
   if (message.content === '!setupverify') {
     try {
-      if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator) &&
-          !message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+      if (
+        !message.member.permissions.has(PermissionsBitField.Flags.Administrator) &&
+        !message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)
+      ) {
         return message.reply('คำสั่งนี้ใช้ได้เฉพาะแอดมินหรือคนที่มีสิทธิ์จัดการเซิร์ฟเวอร์');
       }
 
@@ -85,7 +185,6 @@ client.on('messageCreate', async (message) => {
         );
       }
 
-      // 1) สร้าง role Member ถ้ายังไม่มี
       let memberRole = guild.roles.cache.find((role) => role.name === ROLE_NAME);
 
       if (!memberRole) {
@@ -95,15 +194,13 @@ client.on('messageCreate', async (message) => {
         });
       }
 
-      // 2) เช็กว่าบอทอยู่สูงกว่า role Member หรือไม่
       if (memberRole.position >= botMember.roles.highest.position) {
         return message.reply(
           `บอทแจกยศ ${ROLE_NAME} ไม่ได้ เพราะ role ของบอทต้องอยู่สูงกว่า role ${ROLE_NAME}`
         );
       }
 
-      // 3) สร้างหมวด
-      let category = await findChannelByName(guild, CATEGORY_NAME, ChannelType.GuildCategory);
+      let category = findChannelByName(guild, CATEGORY_NAME, ChannelType.GuildCategory);
 
       if (!category) {
         category = await guild.channels.create({
@@ -113,8 +210,7 @@ client.on('messageCreate', async (message) => {
         });
       }
 
-      // 4) สร้างห้องรับยศ (ทุกคนเห็น)
-      let verifyChannel = await findChannelByName(guild, VERIFY_CHANNEL_NAME, ChannelType.GuildText);
+      let verifyChannel = findChannelByName(guild, VERIFY_CHANNEL_NAME, ChannelType.GuildText);
 
       if (!verifyChannel) {
         verifyChannel = await guild.channels.create({
@@ -145,8 +241,7 @@ client.on('messageCreate', async (message) => {
         await verifyChannel.setParent(category.id);
       }
 
-      // 5) สร้างห้องพูดคุย (เฉพาะ Member)
-      let chatChannel = await findChannelByName(guild, CHAT_CHANNEL_NAME, ChannelType.GuildText);
+      let chatChannel = findChannelByName(guild, CHAT_CHANNEL_NAME, ChannelType.GuildText);
 
       if (!chatChannel) {
         chatChannel = await guild.channels.create({
@@ -189,21 +284,21 @@ client.on('messageCreate', async (message) => {
         });
       }
 
-      // 6) ส่งปุ่มในห้องรับยศ
       await sendVerifyMessage(verifyChannel);
 
       await message.reply(
-        `ตั้งค่าระบบเรียบร้อยแล้ว\n- role: ${ROLE_NAME}\n- หมวด: ${CATEGORY_NAME}\n- ห้องรับยศ: ${VERIFY_CHANNEL_NAME}\n- ห้องสมาชิก: ${CHAT_CHANNEL_NAME}`
+        `ตั้งค่าระบบรับยศเรียบร้อยแล้ว\n- role: ${ROLE_NAME}\n- หมวด: ${CATEGORY_NAME}\n- ห้องรับยศ: ${VERIFY_CHANNEL_NAME}\n- ห้องสมาชิก: ${CHAT_CHANNEL_NAME}`
       );
     } catch (error) {
-      console.error('SETUP ERROR:', error);
-      await message.reply('เกิดข้อผิดพลาดระหว่างสร้างระบบ');
+      console.error('SETUP VERIFY ERROR:', error);
+      await message.reply('เกิดข้อผิดพลาดระหว่างสร้างระบบรับยศ');
     }
   }
 
+  // ===== send verify again =====
   if (message.content === '!sendverify') {
     try {
-      const verifyChannel = await findChannelByName(
+      const verifyChannel = findChannelByName(
         message.guild,
         VERIFY_CHANNEL_NAME,
         ChannelType.GuildText
@@ -218,6 +313,39 @@ client.on('messageCreate', async (message) => {
     } catch (error) {
       console.error('SEND VERIFY ERROR:', error);
       await message.reply('ส่งปุ่มไม่สำเร็จ');
+    }
+  }
+
+  // ===== setup stats =====
+  if (message.content === '!setupstats') {
+    try {
+      if (
+        !message.member.permissions.has(PermissionsBitField.Flags.Administrator) &&
+        !message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)
+      ) {
+        return message.reply('คำสั่งนี้ใช้ได้เฉพาะแอดมินหรือคนที่มีสิทธิ์จัดการเซิร์ฟเวอร์');
+      }
+
+      const botMember = await message.guild.members.fetchMe();
+
+      const needPerms = [
+        PermissionsBitField.Flags.ManageChannels,
+        PermissionsBitField.Flags.ViewChannel,
+      ];
+
+      const missingPerms = needPerms.filter(
+        (perm) => !botMember.permissions.has(perm)
+      );
+
+      if (missingPerms.length > 0) {
+        return message.reply('บอทยังมีสิทธิ์ไม่ครบ ต้องมีอย่างน้อย: Manage Channels, View Channels');
+      }
+
+      await updateStatsForGuild(message.guild);
+      await message.reply('สร้าง/อัปเดตห้องสถิติเรียบร้อยแล้ว');
+    } catch (error) {
+      console.error('SETUP STATS ERROR:', error);
+      await message.reply('เกิดข้อผิดพลาดระหว่างสร้างห้องสถิติ');
     }
   }
 });
@@ -276,5 +404,22 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 });
+
+client.on('guildMemberAdd', async (member) => {
+  await updateStatsForGuild(member.guild);
+});
+
+client.on('guildMemberRemove', async (member) => {
+  await updateStatsForGuild(member.guild);
+});
+
+client.on('presenceUpdate', async (oldPresence, newPresence) => {
+  const guild = newPresence?.guild || oldPresence?.guild;
+  if (!guild) return;
+  await updateStatsForGuild(guild);
+});
+
+client.on('error', console.error);
+process.on('unhandledRejection', console.error);
 
 client.login(TOKEN);
