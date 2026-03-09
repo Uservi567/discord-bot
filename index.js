@@ -19,21 +19,16 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-/**
- * =========================================================
- * CONFIG หลัก
- * ใช้ยศเดิมของคุณ + ปุ่มเดียวรับ MEMBER
- * =========================================================
- */
 const CONFIG = {
-  verifyRole: "✅ MEMBER",
+  // ใช้ ROLE เดิมของคุณตาม ID
+  verifyRoleId: "1347851123364593753",
   verifyButtonId: "main_verify_button",
+
   archiveCategoryName: "🗃️ ห้องเก่า",
   statsCategoryName: "📊 SERVER STATUS",
 
-  // ยศที่อยากให้มี
-  // ถ้ามีอยู่แล้ว บอทจะใช้ของเดิม
-  // ถ้ายังไม่มี บอทจะสร้างให้
+  // ยศอื่น ๆ ถ้ายังไม่มีค่อยสร้าง
+  // แต่จะไม่สร้าง Member ใหม่
   roles: [
     { name: "👑 เจ้าของธุรกิจ", color: 0xe91e63, hoist: true },
     { name: "🛡 แอดมิน สรุปผล", color: 0xf44336, hoist: true },
@@ -46,12 +41,9 @@ const CONFIG = {
     { name: "📦 amazon.Student", color: 0x3498db, hoist: true },
     { name: "🚀 VIP", color: 0xff9800, hoist: true },
 
-    { name: "✅ MEMBER", color: 0x2ecc71, hoist: true },
     { name: "🎵 Music", color: 0x607d8b, hoist: false },
   ],
 
-  // โครงสร้างใหม่ที่ต้องการ
-  // aliases = ชื่อเก่าที่บอทพยายามจับคู่แล้วรีเนม/ย้ายให้
   layout: [
     {
       category: "✨ START HERE",
@@ -295,11 +287,6 @@ const CONFIG = {
   ],
 };
 
-/**
- * =========================================================
- * CLIENT
- * =========================================================
- */
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -310,11 +297,6 @@ const client = new Client({
   ],
 });
 
-/**
- * =========================================================
- * HELPERS
- * =========================================================
- */
 function normalizeName(name = "") {
   return name
     .toLowerCase()
@@ -335,6 +317,10 @@ function getRole(guild, name) {
   return guild.roles.cache.find((r) => r.name === name) || null;
 }
 
+function getVerifyRole(guild) {
+  return guild.roles.cache.get(CONFIG.verifyRoleId) || null;
+}
+
 function getExactChannel(guild, name, type = null) {
   return (
     guild.channels.cache.find((c) => {
@@ -346,7 +332,6 @@ function getExactChannel(guild, name, type = null) {
 
 async function ensureRole(guild, cfg) {
   let role = getRole(guild, cfg.name);
-
   if (!role) {
     role = await guild.roles.create({
       name: cfg.name,
@@ -356,11 +341,10 @@ async function ensureRole(guild, cfg) {
       reason: "สร้าง role อัตโนมัติ",
     });
   }
-
   return role;
 }
 
-async function ensureAllRoles(guild) {
+async function ensureAllRolesExceptMember(guild) {
   for (const roleCfg of CONFIG.roles) {
     await ensureRole(guild, roleCfg);
   }
@@ -386,7 +370,7 @@ async function ensureCategory(guild, name) {
       reason: "สร้าง category อัตโนมัติ",
     });
   } else if (category.name !== name) {
-    await category.setName(name, "ปรับชื่อ category ให้สวยงาม");
+    await category.setName(name, "ปรับชื่อ category");
   }
 
   return category;
@@ -401,7 +385,7 @@ function buildPermissionOverwrites(guild, botMember, channelRule = {}) {
     deny: [],
   };
 
-  const memberRole = getRole(guild, CONFIG.verifyRole);
+  const memberRole = getVerifyRole(guild);
   const staffRole = getRole(guild, "🎓 ทีมงาน");
   const adminRole = getRole(guild, "🛡 แอดมิน สรุปผล");
   const founderRole = getRole(guild, "👑 เจ้าของธุรกิจ");
@@ -516,10 +500,7 @@ async function ensureChannel(guild, category, botMember, channelCfg, managedIds)
     });
   } else {
     if (channel.name !== channelCfg.name) {
-      await channel.setName(
-        channelCfg.name,
-        "เปลี่ยนชื่อห้องเก่าให้เข้าธีมใหม่"
-      );
+      await channel.setName(channelCfg.name, "เปลี่ยนชื่อห้องเก่าให้เข้าธีมใหม่");
     }
 
     if (channel.parentId !== category.id) {
@@ -549,18 +530,21 @@ async function syncFullLayout(guild) {
   return managedIds;
 }
 
-function buildVerifyPanel() {
+function buildVerifyPanel(guild) {
+  const role = getVerifyRole(guild);
+  const roleName = role ? role.name : "Member";
+
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(CONFIG.verifyButtonId)
-      .setLabel("รับยศสมาชิก")
+      .setLabel(`รับยศ ${roleName}`)
       .setStyle(ButtonStyle.Success)
   );
 
   return {
     content:
       "## 🎭 ศูนย์รับยศ\n" +
-      "กดปุ่มด้านล่างเพื่อรับยศหลักของเซิร์ฟเวอร์\n" +
+      `กดปุ่มด้านล่างเพื่อรับยศ **${roleName}**\n` +
       "เมื่อรับยศแล้ว ห้องทั่วไปทั้งหมดจะเปิดให้ใช้งานทันที",
     components: [row],
   };
@@ -581,7 +565,7 @@ async function refreshVerifyPanel(guild) {
   if (!channel) return false;
 
   await clearOldBotMessages(channel);
-  await channel.send(buildVerifyPanel());
+  await channel.send(buildVerifyPanel(guild));
   return true;
 }
 
@@ -669,14 +653,9 @@ async function archiveOldChannels(guild, managedIds) {
   return moved;
 }
 
-/**
- * =========================================================
- * EVENTS
- * =========================================================
- */
 client.once("clientReady", async () => {
   console.log(`บอทออนไลน์แล้ว ${client.user.tag}`);
-  console.log("ใช้ !beautify เพื่อจัดดิสใหม่แบบเก็บข้อความเก่าไว้");
+  console.log("ใช้ !beautify เพื่อจัดห้องโดยใช้ Member เดิม");
   console.log("ใช้ !archiveold เพื่อย้ายห้องเก่าไป archive");
   console.log("ใช้ !sendverify เพื่อรีเฟรชปุ่มรับยศ");
 
@@ -710,6 +689,13 @@ client.on("messageCreate", async (message) => {
         return message.reply("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
       }
 
+      const verifyRole = getVerifyRole(message.guild);
+      if (!verifyRole) {
+        return message.reply(
+          `ไม่พบ role Member ตาม ID นี้: ${CONFIG.verifyRoleId}`
+        );
+      }
+
       const botMember = await message.guild.members.fetchMe();
       const needed = [
         PermissionsBitField.Flags.ViewChannel,
@@ -727,16 +713,16 @@ client.on("messageCreate", async (message) => {
       }
 
       await message.reply(
-        "กำลังจัดระเบียบห้องเก่าให้เข้ากับโครงสร้างใหม่ และเก็บข้อความเดิมไว้..."
+        `กำลังจัดระเบียบห้องโดยใช้ยศเดิม **${verifyRole.name}** และจะไม่สร้าง Member ใหม่...`
       );
 
-      await ensureAllRoles(message.guild);
+      await ensureAllRolesExceptMember(message.guild);
       await syncFullLayout(message.guild);
       await updateStats(message.guild);
       await refreshVerifyPanel(message.guild);
 
       await message.channel.send(
-        "จัดระเบียบเสร็จแล้ว ✅\nห้องเก่าที่จับคู่ได้จะถูกเปลี่ยนชื่อและย้ายหมวด โดยข้อความเดิมยังอยู่"
+        "จัดระเบียบเสร็จแล้ว ✅\nตอนนี้ห้องทั่วไปทั้งหมดจะอ้างอิง Member เดิมของคุณ"
       );
     } catch (error) {
       console.error("beautify error:", error);
@@ -755,7 +741,7 @@ client.on("messageCreate", async (message) => {
 
       await message.reply("กำลังย้ายห้องเก่าที่ไม่อยู่ในโครงสร้างหลักไป archive...");
 
-      await ensureAllRoles(message.guild);
+      await ensureAllRolesExceptMember(message.guild);
       const managedIds = await syncFullLayout(message.guild);
       const moved = await archiveOldChannels(message.guild, managedIds);
 
@@ -795,26 +781,26 @@ client.on("interactionCreate", async (interaction) => {
     try {
       const guild = interaction.guild;
       const member = await guild.members.fetch(interaction.user.id);
-      const role = getRole(guild, CONFIG.verifyRole);
+      const role = getVerifyRole(guild);
       const botMember = await guild.members.fetchMe();
 
       if (!role) {
         return interaction.reply({
-          content: `ไม่พบยศ ${CONFIG.verifyRole}`,
+          content: "ไม่พบ role Member เดิมของเซิร์ฟ",
           flags: MessageFlags.Ephemeral,
         });
       }
 
       if (role.position >= botMember.roles.highest.position) {
         return interaction.reply({
-          content: "บอทให้ยศนี้ไม่ได้ เพราะ role ของบอทต้องอยู่สูงกว่า",
+          content: "บอทให้ยศนี้ไม่ได้ เพราะ role ของบอทต้องอยู่สูงกว่า role Member",
           flags: MessageFlags.Ephemeral,
         });
       }
 
       if (member.roles.cache.has(role.id)) {
         return interaction.reply({
-          content: "คุณมียศนี้อยู่แล้ว",
+          content: `คุณมียศ ${role.name} อยู่แล้ว`,
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -822,7 +808,7 @@ client.on("interactionCreate", async (interaction) => {
       await member.roles.add(role);
 
       return interaction.reply({
-        content: "รับยศสมาชิกเรียบร้อยแล้ว 🎉",
+        content: `รับยศ ${role.name} เรียบร้อยแล้ว 🎉`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
