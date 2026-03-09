@@ -23,52 +23,19 @@ const CONFIG = {
   memberRoleId: "1347851123364593753",
   verifyButtonId: "main_verify_button",
 
-  // ใช้หมวดเดิมของคุณตาม ID นี้
+  // หมวด START HERE เดิมของคุณ
   startHereCategoryId: "1480603184207630346",
-  startHereCategoryName: "✨ START HERE",
 
-  startHereChannels: [
-    {
-      name: "📜│กฎ",
-      aliases: ["กฎ", "rules"],
-      seed: [
-        "# 📜 กฎของเซิร์ฟเวอร์",
-        "1. เคารพกันและกัน",
-        "2. ห้ามสแปมหรือปั่น",
-        "3. ใช้ห้องให้ตรงประเภท",
-        "4. ห้ามโฆษณาโดยไม่ได้รับอนุญาต",
-      ],
-    },
-    {
-      name: "📢│ประกาศ",
-      aliases: ["ประกาศ", "announcements"],
-      seed: [
-        "# 📢 ประกาศ",
-        "ห้องนี้ใช้สำหรับประกาศสำคัญจากทีมงาน",
-      ],
-    },
-    {
-      name: "👋│welcome",
-      aliases: ["welcome", "ยินดีต้อนรับ", "welcome-chat"],
-      seed: [
-        "# 👋 ยินดีต้อนรับ",
-        "เริ่มต้นที่ห้อง `🎭│รับยศ` เพื่อเปิดห้องทั้งหมดของเซิร์ฟเวอร์",
-      ],
-    },
-    {
-      name: "🎭│รับยศ",
-      aliases: ["รับยศ", "verify", "roles"],
-      seed: [],
-    },
-    {
-      name: "🔗│เชิญเพื่อน",
-      aliases: ["invite", "ลิงก์เชิญ", "ลิงก์เชิญเพื่อน"],
-      seed: [
-        "# 🔗 เชิญเพื่อน",
-        "แชร์ลิงก์เชิญเซิร์ฟเวอร์นี้ให้เพื่อนของคุณได้ที่นี่",
-      ],
-    },
+  // ช่องที่อยากให้คนทั่วไปเห็นทั้งหมด
+  publicChannelIds: [
+    "1480603186107781394",
+    "1347851123834228800",
+    "1347851123834228802",
+    "1480603194118766746",
   ],
+
+  // ห้องรับยศ
+  verifyChannelId: "1480603194118766746",
 };
 
 const client = new Client({
@@ -80,70 +47,22 @@ const client = new Client({
   ],
 });
 
-function normalizeName(name = "") {
-  return name
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s|_-]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function simplifiedName(name = "") {
-  return normalizeName(name).replace(/\|/g, " ");
-}
-
 function getMemberRole(guild) {
   return guild.roles.cache.get(CONFIG.memberRoleId) || null;
 }
 
-function getExactChannel(guild, name, type = null) {
-  return (
-    guild.channels.cache.find((c) => {
-      if (type !== null) return c.name === name && c.type === type;
-      return c.name === name;
-    }) || null
-  );
-}
-
-function findMatchingTextChannel(guild, name, aliases = []) {
-  const acceptable = [simplifiedName(name), ...aliases.map(simplifiedName)];
-
-  return (
-    guild.channels.cache.find(
-      (c) =>
-        c.type === ChannelType.GuildText &&
-        acceptable.includes(simplifiedName(c.name))
-    ) || null
-  );
-}
-
-async function ensureStartHereCategory(guild) {
-  let category = guild.channels.cache.get(CONFIG.startHereCategoryId) || null;
-
-  if (category && category.type !== ChannelType.GuildCategory) {
-    throw new Error("startHereCategoryId ไม่ใช่หมวดหมู่");
-  }
+async function ensureStartHereVisible(guild) {
+  const category = guild.channels.cache.get(CONFIG.startHereCategoryId);
 
   if (!category) {
-    category =
-      guild.channels.cache.find(
-        (c) =>
-          c.type === ChannelType.GuildCategory &&
-          simplifiedName(c.name) === simplifiedName(CONFIG.startHereCategoryName)
-      ) || null;
+    throw new Error(`ไม่พบหมวด START HERE id: ${CONFIG.startHereCategoryId}`);
   }
 
-  if (!category) {
-    category = await guild.channels.create({
-      name: CONFIG.startHereCategoryName,
-      type: ChannelType.GuildCategory,
-      reason: "สร้างหมวด START HERE",
-    });
-  } else if (category.name !== CONFIG.startHereCategoryName) {
-    await category.setName(CONFIG.startHereCategoryName).catch(() => {});
+  if (category.type !== ChannelType.GuildCategory) {
+    throw new Error("ID ของ START HERE ไม่ใช่หมวดหมู่");
   }
 
-  // เปิดหมวดให้ everyone เห็น
+  // เปิดให้ everyone เห็นหมวด
   await category.permissionOverwrites.set([
     {
       id: guild.roles.everyone.id,
@@ -152,83 +71,54 @@ async function ensureStartHereCategory(guild) {
     },
   ]);
 
-  return category;
-}
-
-function buildStartHereOverwrites(guild, botMember, channelName) {
-  const overwrites = [
-    {
-      id: guild.roles.everyone.id,
-      allow: [
-        PermissionsBitField.Flags.ViewChannel,
-        PermissionsBitField.Flags.ReadMessageHistory,
-      ],
-      deny: [PermissionsBitField.Flags.SendMessages],
-    },
-    {
-      id: botMember.id,
-      allow: [
-        PermissionsBitField.Flags.ViewChannel,
-        PermissionsBitField.Flags.ReadMessageHistory,
-        PermissionsBitField.Flags.SendMessages,
-        PermissionsBitField.Flags.ManageChannels,
-        PermissionsBitField.Flags.ManageMessages,
-      ],
-      deny: [],
-    },
-  ];
-
-  // ห้องรับยศเหมือนห้องอื่น แต่มีปุ่มของบอท
-  return overwrites;
-}
-
-async function ensureStartHereChannels(guild) {
-  const category = await ensureStartHereCategory(guild);
   const botMember = await guild.members.fetchMe();
 
-  for (const channelCfg of CONFIG.startHereChannels) {
-    let channel = findMatchingTextChannel(
-      guild,
-      channelCfg.name,
-      channelCfg.aliases || []
-    );
-
-    const overwrites = buildStartHereOverwrites(
-      guild,
-      botMember,
-      channelCfg.name
-    );
+  for (const channelId of CONFIG.publicChannelIds) {
+    const channel = guild.channels.cache.get(channelId);
 
     if (!channel) {
-      channel = await guild.channels.create({
-        name: channelCfg.name,
-        type: ChannelType.GuildText,
-        parent: category.id,
-        permissionOverwrites: overwrites,
-        reason: "สร้างห้อง START HERE",
-      });
-    } else {
-      if (channel.name !== channelCfg.name) {
-        await channel.setName(channelCfg.name).catch(() => {});
-      }
-
-      // สำคัญ: ย้ายเข้า category id นี้ตรง ๆ
-      if (channel.parentId !== category.id) {
-        await channel.setParent(category.id, { lockPermissions: false }).catch(() => {});
-      }
-
-      // สำคัญ: เขียนทับ permission ห้องใหม่
-      await channel.permissionOverwrites.set(
-        overwrites,
-        "รีเซ็ต permission ห้อง START HERE"
-      ).catch(console.error);
+      console.log("ไม่พบ channel:", channelId);
+      continue;
     }
+
+    if (channel.type !== ChannelType.GuildText) {
+      console.log("ไม่ใช่ text channel:", channelId);
+      continue;
+    }
+
+    // ย้ายเข้าหมวด START HERE เดิม
+    if (channel.parentId !== category.id) {
+      await channel.setParent(category.id, { lockPermissions: false }).catch(console.error);
+    }
+
+    // เปิดให้ทุกคนเห็น + อ่านย้อนหลังได้ แต่ส่งข้อความไม่ได้
+    await channel.permissionOverwrites.set([
+      {
+        id: guild.roles.everyone.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+        deny: [PermissionsBitField.Flags.SendMessages],
+      },
+      {
+        id: botMember.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.ReadMessageHistory,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ManageChannels,
+          PermissionsBitField.Flags.ManageMessages,
+        ],
+        deny: [],
+      },
+    ]).catch(console.error);
   }
 }
 
 function buildVerifyPanel(guild) {
-  const memberRole = getMemberRole(guild);
-  const roleName = memberRole ? memberRole.name : "Member";
+  const role = getMemberRole(guild);
+  const roleName = role ? role.name : "Member";
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -253,60 +143,29 @@ async function clearOldBotMessages(channel) {
     for (const msg of botMessages.values()) {
       await msg.delete().catch(() => {});
     }
-  } catch {}
+  } catch (e) {
+    console.error("clearOldBotMessages error:", e);
+  }
 }
 
 async function refreshVerifyPanel(guild) {
-  const channel = getExactChannel(guild, "🎭│รับยศ", ChannelType.GuildText);
-  if (!channel) return false;
+  const channel = guild.channels.cache.get(CONFIG.verifyChannelId);
+
+  if (!channel) {
+    throw new Error(`ไม่พบห้องรับยศ id: ${CONFIG.verifyChannelId}`);
+  }
+
+  if (channel.type !== ChannelType.GuildText) {
+    throw new Error("verifyChannelId ไม่ใช่ text channel");
+  }
 
   await clearOldBotMessages(channel);
   await channel.send(buildVerifyPanel(guild));
-  return true;
-}
-
-async function seedRoomIfEmpty(channel, seedLines) {
-  if (!seedLines || seedLines.length === 0) return false;
-  if (channel.type !== ChannelType.GuildText) return false;
-
-  const messages = await channel.messages.fetch({ limit: 5 }).catch(() => null);
-  if (!messages) return false;
-
-  const hasNonBotContent = messages.some(
-    (m) => !m.author.bot && m.content.trim() !== ""
-  );
-  if (hasNonBotContent) return false;
-
-  const hasBotContent = messages.some((m) => m.author.id === client.user.id);
-  if (hasBotContent) return false;
-
-  await channel.send(seedLines.join("\n")).catch(() => {});
-  return true;
-}
-
-async function seedStartHereRooms(guild) {
-  let seeded = 0;
-
-  for (const channelCfg of CONFIG.startHereChannels) {
-    if (!channelCfg.seed || channelCfg.seed.length === 0) continue;
-
-    const ch = getExactChannel(guild, channelCfg.name, ChannelType.GuildText);
-    if (!ch) continue;
-
-    const didSeed = await seedRoomIfEmpty(ch, channelCfg.seed);
-    if (didSeed) seeded++;
-  }
-
-  return seeded;
 }
 
 client.once("clientReady", async () => {
   console.log(`บอทออนไลน์แล้ว ${client.user.tag}`);
-  console.log("ใช้ !setupstart เพื่อซ่อม START HERE และระบบรับยศ");
-
-  for (const guild of client.guilds.cache.values()) {
-    await ensureStartHereCategory(guild).catch(console.error);
-  }
+  console.log("ใช้ !fixstart เพื่อเปิด START HERE ให้คนทั่วไปเห็น");
 });
 
 client.on("messageCreate", async (message) => {
@@ -321,7 +180,7 @@ client.on("messageCreate", async (message) => {
   if (!message.content.startsWith(PREFIX)) return;
   const cmd = message.content.slice(PREFIX.length).trim().toLowerCase();
 
-  if (cmd === "setupstart") {
+  if (cmd === "fixstart") {
     try {
       if (
         !message.member.permissions.has(PermissionsBitField.Flags.Administrator) &&
@@ -332,9 +191,7 @@ client.on("messageCreate", async (message) => {
 
       const memberRole = getMemberRole(message.guild);
       if (!memberRole) {
-        return message.reply(
-          `ไม่พบ Member role ตาม ID นี้: ${CONFIG.memberRoleId}`
-        );
+        return message.reply(`ไม่พบ Member role ตาม ID นี้: ${CONFIG.memberRoleId}`);
       }
 
       const botMember = await message.guild.members.fetchMe();
@@ -355,30 +212,16 @@ client.on("messageCreate", async (message) => {
 
       const status = await message.reply("กำลังซ่อม START HERE...");
 
-      await status.edit("1/3 กำลังตั้งหมวดและห้องให้คนทั่วไปเห็น...");
-      await ensureStartHereChannels(message.guild);
+      await status.edit("1/2 กำลังเปิดสิทธิ์ห้องให้คนทั่วไปเห็น...");
+      await ensureStartHereVisible(message.guild);
 
-      await status.edit("2/3 กำลังส่งปุ่มรับยศ...");
+      await status.edit("2/2 กำลังรีเฟรชปุ่มรับยศ...");
       await refreshVerifyPanel(message.guild);
 
-      await status.edit("3/3 กำลังเติมข้อความห้องที่ยังว่าง...");
-      const seeded = await seedStartHereRooms(message.guild);
-
-      await status.edit(`ซ่อม START HERE เสร็จแล้ว ✅ เติมข้อความ ${seeded} ห้อง`);
+      await status.edit("ซ่อม START HERE เรียบร้อยแล้ว ✅");
     } catch (error) {
-      console.error("setupstart error:", error);
-      await message.reply("เกิดข้อผิดพลาดระหว่างซ่อม START HERE");
-    }
-  }
-
-  if (cmd === "sendverify") {
-    try {
-      const ok = await refreshVerifyPanel(message.guild);
-      if (!ok) return message.reply("ยังไม่พบห้อง 🎭│รับยศ");
-      await message.reply("รีเฟรชปุ่มรับยศเรียบร้อยแล้ว");
-    } catch (error) {
-      console.error("sendverify error:", error);
-      await message.reply("รีเฟรชปุ่มรับยศไม่สำเร็จ");
+      console.error("fixstart error:", error);
+      await message.reply(`เกิดข้อผิดพลาด: ${error.message}`);
     }
   }
 });
@@ -422,12 +265,10 @@ client.on("interactionCreate", async (interaction) => {
       });
     } catch (error) {
       console.error("verify button error:", error);
-      return interaction
-        .reply({
-          content: "เกิดข้อผิดพลาด",
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      return interaction.reply({
+        content: "เกิดข้อผิดพลาด",
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
     }
   }
 });
