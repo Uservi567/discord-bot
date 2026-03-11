@@ -28,10 +28,9 @@ const TOKEN = process.env.TOKEN;
 const PREFIX = "!";
 const TARGET_ROLE_ID = "1347851123364593753";
 const ROLE_CHANNEL_NAME = "🎭│รับยศ";
-const PANEL_GIF = "https://i.postimg.cc/TPV1g79z/82bf7149e3ad23ab30c551ab4a84b742.gif";
+const PANEL_GIF = "https://i.postimg.cc/BvgsywmH/snaptik-7505147525616176389-hd.gif";
 const BUTTON_ID = "toggle_role_1347851123364593753";
 
-// ถ้าอยากให้สร้างไว้ในหมวด ให้ใส่ category id ตรงนี้ ถ้าไม่มีก็ปล่อยว่าง
 const CATEGORY_ID = "";
 
 // =========================
@@ -41,26 +40,20 @@ function buildRolePanelEmbed(guild) {
   return new EmbedBuilder()
     .setColor(0x0b0b10)
     .setAuthor({
-      name: `${guild.name} • Role Access`,
+      name: guild.name,
       iconURL: guild.iconURL({ dynamic: true }) || undefined,
     })
-    .setTitle("✦ ระบบรับยศอัตโนมัติ")
+    .setTitle("✦ ระบบรับยศ")
     .setDescription(
       [
-        "กดปุ่มด้านล่างเพื่อ **รับยศ** หรือ **เอายศออก** ได้ทันที",
+        "กดปุ่มด้านล่างเพื่อรับยศหรือเอายศออกได้ทันที",
         "",
-        `> **Role:** <@&${TARGET_ROLE_ID}>`,
+        `> **ยศ:** <@&${TARGET_ROLE_ID}>`,
         "> ระบบจะสลับยศให้อัตโนมัติ",
-        "",
-        "```fix",
-        "CLICK THE BUTTON TO TOGGLE YOUR ROLE",
-        "```",
       ].join("\n")
     )
     .setImage(PANEL_GIF)
-    .setThumbnail(guild.iconURL({ dynamic: true }) || null)
-    .setFooter({ text: "Professional Role Panel • Dark Edition" })
-    .setTimestamp();
+    .setThumbnail(guild.iconURL({ dynamic: true }) || null);
 }
 
 function buildRolePanelButtons() {
@@ -142,7 +135,6 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply(validation.message);
     }
 
-    // ลบห้องเก่าถ้ามี
     const oldChannel = await findExistingRoleChannel(message.guild);
     if (oldChannel) {
       await oldChannel.delete("Refreshing role panel channel").catch((err) => {
@@ -150,7 +142,6 @@ client.on(Events.MessageCreate, async (message) => {
       });
     }
 
-    // permission ของห้อง
     const permissionOverwrites = [
       {
         id: message.guild.roles.everyone.id,
@@ -233,9 +224,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const removeEmbed = new EmbedBuilder()
         .setColor(0xff0033)
         .setTitle("✦ ถอดยศเรียบร้อย")
-        .setDescription(`ระบบได้เอายศ <@&${TARGET_ROLE_ID}> ออกจากคุณแล้ว`)
-        .setFooter({ text: "Role Removed" })
-        .setTimestamp();
+        .setDescription(`ระบบได้เอายศ <@&${TARGET_ROLE_ID}> ออกจากคุณแล้ว`);
 
       return interaction.reply({
         embeds: [removeEmbed],
@@ -248,9 +237,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const addEmbed = new EmbedBuilder()
       .setColor(0x00ff9d)
       .setTitle("✦ รับยศสำเร็จ")
-      .setDescription(`ระบบได้มอบยศ <@&${TARGET_ROLE_ID}> ให้คุณแล้ว`)
-      .setFooter({ text: "Role Added" })
-      .setTimestamp();
+      .setDescription(`ระบบได้มอบยศ <@&${TARGET_ROLE_ID}> ให้คุณแล้ว`);
 
     return interaction.reply({
       embeds: [addEmbed],
