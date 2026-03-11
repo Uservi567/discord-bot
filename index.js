@@ -1,279 +1,252 @@
 require("dotenv").config();
-
 const {
   Client,
   GatewayIntentBits,
-  PermissionsBitField,
-  ChannelType,
+  Partials,
+  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
+  Events,
+  PermissionsBitField,
 } = require("discord.js");
-
-const TOKEN = process.env.TOKEN;
-const PREFIX = "!";
-
-if (!TOKEN) {
-  console.error("ไม่พบ TOKEN ในไฟล์ .env");
-  process.exit(1);
-}
-
-const CONFIG = {
-  memberRoleId: "1347851123364593753",
-  verifyButtonId: "main_verify_button",
-
-  // หมวด START HERE เดิมของคุณ
-  startHereCategoryId: "1480603184207630346",
-
-  // ช่องที่อยากให้คนทั่วไปเห็นทั้งหมด
-  publicChannelIds: [
-    "1480603186107781394",
-    "1347851123834228800",
-    "1347851123834228802",
-    "1480603194118766746",
-  ],
-
-  // ห้องรับยศ
-  verifyChannelId: "1480603194118766746",
-};
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
   ],
+  partials: [Partials.GuildMember],
 });
 
-function getMemberRole(guild) {
-  return guild.roles.cache.get(CONFIG.memberRoleId) || null;
-}
+// =========================
+// CONFIG
+// =========================
+const TOKEN = process.env.TOKEN;
 
-async function ensureStartHereVisible(guild) {
-  const category = guild.channels.cache.get(CONFIG.startHereCategoryId);
+// ยศที่ต้องการให้รับ
+const TARGET_ROLE_ID = "1347851123364593753";
 
-  if (!category) {
-    throw new Error(`ไม่พบหมวด START HERE id: ${CONFIG.startHereCategoryId}`);
-  }
+// รูปที่ใช้
+const PANEL_GIF = "https://i.postimg.cc/TPV1g79z/82bf7149e3ad23ab30c551ab4a84b742.gif";
 
-  if (category.type !== ChannelType.GuildCategory) {
-    throw new Error("ID ของ START HERE ไม่ใช่หมวดหมู่");
-  }
+// ปุ่ม
+const BUTTON_GET_ROLE = "get_role_1347851123364593753";
 
-  // เปิดให้ everyone เห็นหมวด
-  await category.permissionOverwrites.set([
-    {
-      id: guild.roles.everyone.id,
-      allow: [PermissionsBitField.Flags.ViewChannel],
-      deny: [],
-    },
-  ]);
+// สีธีม
+const COLORS = {
+  primary: 0x0b0f1a,
+  accent: 0x5865f2,
+  success: 0x57f287,
+  danger: 0xed4245,
+};
 
-  const botMember = await guild.members.fetchMe();
+// =========================
+// READY
+// =========================
+client.once(Events.ClientReady, async (bot) => {
+  console.log(`✅ Logged in as ${bot.user.tag}`);
+  console.log(`✅ Role panel bot is ready.`);
+});
 
-  for (const channelId of CONFIG.publicChannelIds) {
-    const channel = guild.channels.cache.get(channelId);
-
-    if (!channel) {
-      console.log("ไม่พบ channel:", channelId);
-      continue;
-    }
-
-    if (channel.type !== ChannelType.GuildText) {
-      console.log("ไม่ใช่ text channel:", channelId);
-      continue;
-    }
-
-    // ย้ายเข้าหมวด START HERE เดิม
-    if (channel.parentId !== category.id) {
-      await channel.setParent(category.id, { lockPermissions: false }).catch(console.error);
-    }
-
-    // เปิดให้ทุกคนเห็น + อ่านย้อนหลังได้ แต่ส่งข้อความไม่ได้
-    await channel.permissionOverwrites.set([
-      {
-        id: guild.roles.everyone.id,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.ReadMessageHistory,
-        ],
-        deny: [PermissionsBitField.Flags.SendMessages],
-      },
-      {
-        id: botMember.id,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.ReadMessageHistory,
-          PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.ManageChannels,
-          PermissionsBitField.Flags.ManageMessages,
-        ],
-        deny: [],
-      },
-    ]).catch(console.error);
-  }
-}
-
-function buildVerifyPanel(guild) {
-  const role = getMemberRole(guild);
-  const roleName = role ? role.name : "Member";
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(CONFIG.verifyButtonId)
-      .setLabel(`รับยศ ${roleName}`)
-      .setStyle(ButtonStyle.Success)
-  );
-
-  return {
-    content:
-      "## 🎭 รับยศสมาชิก\n" +
-      `กดปุ่มด้านล่างเพื่อรับยศ **${roleName}**\n` +
-      "หลังรับยศแล้ว ห้องสมาชิกของเซิร์ฟเวอร์จะเปิดให้ใช้งาน",
-    components: [row],
-  };
-}
-
-async function clearOldBotMessages(channel) {
+// =========================
+// MESSAGE COMMAND
+// ใช้คำสั่ง !รับยศ เพื่อส่งแผงรับยศ
+// =========================
+client.on(Events.MessageCreate, async (message) => {
   try {
-    const messages = await channel.messages.fetch({ limit: 30 });
-    const botMessages = messages.filter((m) => m.author.id === client.user.id);
-    for (const msg of botMessages.values()) {
-      await msg.delete().catch(() => {});
-    }
-  } catch (e) {
-    console.error("clearOldBotMessages error:", e);
-  }
-}
+    if (message.author.bot) return;
+    if (!message.guild) return;
+    if (message.content !== "!รับยศ") return;
 
-async function refreshVerifyPanel(guild) {
-  const channel = guild.channels.cache.get(CONFIG.verifyChannelId);
-
-  if (!channel) {
-    throw new Error(`ไม่พบห้องรับยศ id: ${CONFIG.verifyChannelId}`);
-  }
-
-  if (channel.type !== ChannelType.GuildText) {
-    throw new Error("verifyChannelId ไม่ใช่ text channel");
-  }
-
-  await clearOldBotMessages(channel);
-  await channel.send(buildVerifyPanel(guild));
-}
-
-client.once("clientReady", async () => {
-  console.log(`บอทออนไลน์แล้ว ${client.user.tag}`);
-  console.log("ใช้ !fixstart เพื่อเปิด START HERE ให้คนทั่วไปเห็น");
-});
-
-client.on("messageCreate", async (message) => {
-  if (message.author.bot || !message.guild) return;
-
-  console.log("MESSAGE:", message.content);
-
-  if (message.content === "!testbot") {
-    return message.reply("บอทอ่านคำสั่งได้แล้ว");
-  }
-
-  if (!message.content.startsWith(PREFIX)) return;
-  const cmd = message.content.slice(PREFIX.length).trim().toLowerCase();
-
-  if (cmd === "fixstart") {
-    try {
-      if (
-        !message.member.permissions.has(PermissionsBitField.Flags.Administrator) &&
-        !message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)
-      ) {
-        return message.reply("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
-      }
-
-      const memberRole = getMemberRole(message.guild);
-      if (!memberRole) {
-        return message.reply(`ไม่พบ Member role ตาม ID นี้: ${CONFIG.memberRoleId}`);
-      }
-
-      const botMember = await message.guild.members.fetchMe();
-      const needed = [
-        PermissionsBitField.Flags.ViewChannel,
-        PermissionsBitField.Flags.SendMessages,
-        PermissionsBitField.Flags.ReadMessageHistory,
-        PermissionsBitField.Flags.ManageChannels,
-        PermissionsBitField.Flags.ManageRoles,
-      ];
-
-      const missing = needed.filter((perm) => !botMember.permissions.has(perm));
-      if (missing.length > 0) {
-        return message.reply(
-          "บอทยังมีสิทธิ์ไม่ครบ ต้องมี: View Channels, Send Messages, Read Message History, Manage Channels, Manage Roles"
-        );
-      }
-
-      const status = await message.reply("กำลังซ่อม START HERE...");
-
-      await status.edit("1/2 กำลังเปิดสิทธิ์ห้องให้คนทั่วไปเห็น...");
-      await ensureStartHereVisible(message.guild);
-
-      await status.edit("2/2 กำลังรีเฟรชปุ่มรับยศ...");
-      await refreshVerifyPanel(message.guild);
-
-      await status.edit("ซ่อม START HERE เรียบร้อยแล้ว ✅");
-    } catch (error) {
-      console.error("fixstart error:", error);
-      await message.reply(`เกิดข้อผิดพลาด: ${error.message}`);
-    }
-  }
-});
-
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.guild) return;
-
-  if (interaction.isButton() && interaction.customId === CONFIG.verifyButtonId) {
-    try {
-      const guild = interaction.guild;
-      const member = await guild.members.fetch(interaction.user.id);
-      const role = getMemberRole(guild);
-      const botMember = await guild.members.fetchMe();
-
-      if (!role) {
-        return interaction.reply({
-          content: "ไม่พบ Member role เดิมของเซิร์ฟ",
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      if (role.position >= botMember.roles.highest.position) {
-        return interaction.reply({
-          content: "บอทให้ยศนี้ไม่ได้ เพราะ role ของบอทต้องอยู่สูงกว่า role Member",
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      if (member.roles.cache.has(role.id)) {
-        return interaction.reply({
-          content: `คุณมียศ ${role.name} อยู่แล้ว`,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      await member.roles.add(role);
-
-      return interaction.reply({
-        content: `รับยศ ${role.name} เรียบร้อยแล้ว 🎉`,
-        flags: MessageFlags.Ephemeral,
+    // ให้เฉพาะแอดมิน/คนที่มี Manage Roles ใช้คำสั่งสร้างแผงได้
+    const memberPerms = message.member.permissions;
+    if (
+      !memberPerms.has(PermissionsBitField.Flags.Administrator) &&
+      !memberPerms.has(PermissionsBitField.Flags.ManageRoles)
+    ) {
+      return message.reply({
+        content: "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้",
       });
-    } catch (error) {
-      console.error("verify button error:", error);
-      return interaction.reply({
-        content: "เกิดข้อผิดพลาด",
-        flags: MessageFlags.Ephemeral,
+    }
+
+    const targetRole = await message.guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
+    if (!targetRole) {
+      return message.reply({
+        content: `❌ ไม่พบยศนี้: \`${TARGET_ROLE_ID}\``,
+      });
+    }
+
+    const me = message.guild.members.me;
+    if (!me) {
+      return message.reply({
+        content: "❌ บอทไม่สามารถตรวจสอบตัวเองในเซิร์ฟเวอร์นี้ได้",
+      });
+    }
+
+    if (!me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+      return message.reply({
+        content: "❌ บอทไม่มีสิทธิ์ Manage Roles",
+      });
+    }
+
+    if (me.roles.highest.position <= targetRole.position) {
+      return message.reply({
+        content:
+          "❌ บอทไม่สามารถให้ยศนี้ได้ เพราะยศของบอทอยู่ต่ำกว่าหรือเท่ากับยศเป้าหมาย\nกรุณาลากยศของบอทให้อยู่สูงกว่ายศนี้ใน Role Settings",
+      });
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.primary)
+      .setAuthor({
+        name: `${message.guild.name} • Role Access`,
+        iconURL: message.guild.iconURL({ dynamic: true }) || undefined,
+      })
+      .setTitle("✦ รับยศอัตโนมัติ")
+      .setDescription(
+        [
+          "กดปุ่มด้านล่างเพื่อรับหรือถอดยศได้ทันที",
+          "",
+          `> **ยศที่เชื่อมไว้:** <@&${TARGET_ROLE_ID}>`,
+          "> ระบบทำงานอัตโนมัติ ปลอดภัย และรวดเร็ว",
+          "",
+          "```fix",
+          "CLICK THE BUTTON TO TOGGLE YOUR ROLE",
+          "```",
+        ].join("\n")
+      )
+      .setImage(PANEL_GIF)
+      .setFooter({
+        text: "Professional Role Panel",
+      })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(BUTTON_GET_ROLE)
+        .setLabel("รับยศ / เอายศออก")
+        .setEmoji("✨")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await message.channel.send({
+      embeds: [embed],
+      components: [row],
+    });
+
+    await message.reply({
+      content: "✅ ส่งแผงรับยศเรียบร้อยแล้ว",
+    });
+  } catch (error) {
+    console.error("Message command error:", error);
+    if (message?.reply) {
+      await message.reply({
+        content: "❌ เกิดข้อผิดพลาดขณะสร้างแผงรับยศ",
       }).catch(() => {});
     }
   }
 });
 
-client.on("error", console.error);
-process.on("unhandledRejection", console.error);
+// =========================
+// BUTTON INTERACTION
+// =========================
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    if (!interaction.isButton()) return;
+    if (interaction.customId !== BUTTON_GET_ROLE) return;
+    if (!interaction.guild) {
+      return interaction.reply({
+        content: "❌ คำสั่งนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์เท่านั้น",
+        ephemeral: true,
+      });
+    }
+
+    const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!member) {
+      return interaction.reply({
+        content: "❌ ไม่พบข้อมูลสมาชิก",
+        ephemeral: true,
+      });
+    }
+
+    const role = await interaction.guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
+    if (!role) {
+      return interaction.reply({
+        content: "❌ ไม่พบยศที่ตั้งค่าไว้",
+        ephemeral: true,
+      });
+    }
+
+    const me = interaction.guild.members.me;
+    if (!me) {
+      return interaction.reply({
+        content: "❌ บอทไม่สามารถตรวจสอบตัวเองได้",
+        ephemeral: true,
+      });
+    }
+
+    if (!me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+      return interaction.reply({
+        content: "❌ บอทไม่มีสิทธิ์ Manage Roles",
+        ephemeral: true,
+      });
+    }
+
+    if (me.roles.highest.position <= role.position) {
+      return interaction.reply({
+        content:
+          "❌ บอทไม่สามารถจัดการยศนี้ได้ เพราะตำแหน่งยศของบอทต่ำกว่าหรือเท่ากับยศเป้าหมาย",
+        ephemeral: true,
+      });
+    }
+
+    const hasRole = member.roles.cache.has(TARGET_ROLE_ID);
+
+    if (hasRole) {
+      await member.roles.remove(role, "User removed self role from role panel");
+
+      return interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(COLORS.danger)
+            .setTitle("ยกเลิกยศแล้ว")
+            .setDescription(`เอายศ <@&${TARGET_ROLE_ID}> ออกจากคุณเรียบร้อยแล้ว`)
+            .setFooter({ text: "Role Removed" })
+            .setTimestamp(),
+        ],
+        ephemeral: true,
+      });
+    } else {
+      await member.roles.add(role, "User claimed self role from role panel");
+
+      return interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(COLORS.success)
+            .setTitle("รับยศสำเร็จ")
+            .setDescription(`คุณได้รับยศ <@&${TARGET_ROLE_ID}> เรียบร้อยแล้ว`)
+            .setFooter({ text: "Role Added" })
+            .setTimestamp(),
+        ],
+        ephemeral: true,
+      });
+    }
+  } catch (error) {
+    console.error("Interaction error:", error);
+
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp({
+        content: "❌ เกิดข้อผิดพลาดระหว่างจัดการยศ",
+        ephemeral: true,
+      }).catch(() => {});
+    } else {
+      await interaction.reply({
+        content: "❌ เกิดข้อผิดพลาดระหว่างจัดการยศ",
+        ephemeral: true,
+      }).catch(() => {});
+    }
+  }
+});
 
 client.login(TOKEN);
