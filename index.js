@@ -37,20 +37,25 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const PREFIX = "!";
 
-// ROLE
+// ยศกดรับเอง
 const TARGET_ROLE_ID = "1347851123364593753";
-const PURCHASE_ROLE_ID = TARGET_ROLE_ID;
+
+// ยศหลักจากการซื้อ
+// ถ้าไม่ต้องการให้ยศหลักตอนซื้อ ให้ปล่อยเป็น ""
+const PURCHASE_ROLE_ID = "";
+
+// ปุ่มรับยศ
 const ROLE_PANEL_BUTTON_ID = "toggle_role_1347851123364593753";
 
-// ถ้ามี role ทีมตรวจสลิป ใส่ได้
+// ทีมงาน
 const STAFF_ALERT_ROLE_ID = "";
 const REVIEWER_ROLE_ID = "";
 
-// IMAGES
+// รูป
 const ROLE_PANEL_GIF = "https://i.postimg.cc/BvgsywmH/snaptik-7505147525616176389-hd.gif";
 const SHOP_BANNER = "";
 
-// COLORS
+// สี
 const COLORS = {
   dark: 0x0b0b10,
   green: 0x00ff9d,
@@ -62,7 +67,7 @@ const COLORS = {
   orange: 0xff9900,
 };
 
-// CATEGORIES
+// หมวด
 const STATUS_CATEGORY_NAME = "📊 SERVER STATUS";
 const STORE_CATEGORY_NAME = "🛒 STORE CENTER";
 const CUSTOMER_CATEGORY_NAME = "🎟 CUSTOMER AREA";
@@ -70,7 +75,7 @@ const ROLE_CATEGORY_NAME = "🎭 ROLE SYSTEM";
 const LOG_CATEGORY_NAME = "📁 SERVER LOGS";
 const ADMIN_CATEGORY_NAME = "🛠 ADMIN PANEL";
 
-// CHANNELS
+// ห้อง
 const STATUS_TOTAL_NAME = "👥 สมาชิกทั้งหมด";
 const STATUS_ONLINE_NAME = "🟢 ออนไลน์";
 const STATUS_BOT_NAME = "🤖 บอท";
@@ -89,16 +94,15 @@ const LOG_MOD_NAME = "🛡│mod-logs";
 const LOG_VOICE_NAME = "🔊│voice-logs";
 const LOG_PAYMENT_NAME = "💸│payment-logs";
 
-// FILES
+// ไฟล์
 const PRODUCTS_FILE = path.join(__dirname, "products.json");
 const ORDERS_FILE = path.join(__dirname, "orders.json");
 
-// MISC
+// ตั้งค่าอื่น ๆ
 const STATUS_UPDATE_INTERVAL = 60 * 1000;
 const PRODUCTS_PER_PAGE = 10;
 const TRANSCRIPT_MESSAGE_LIMIT = 300;
 
-// TIMEOUTS
 const TICKET_WARN_AFTER_MS = 30 * 60 * 1000;
 const TICKET_CLOSE_AFTER_MS = 2 * 60 * 60 * 1000;
 
@@ -162,7 +166,7 @@ function generateOrderId(orders) {
 }
 
 // =========================
-// STATUS / TEXT HELPERS
+// TEXT / STATUS HELPERS
 // =========================
 function getOrderStatusText(status) {
   const map = {
@@ -195,11 +199,6 @@ function canReviewPayments(member) {
   return false;
 }
 
-function normalizeBooleanText(text) {
-  const value = String(text).trim().toLowerCase();
-  return ["true", "on", "yes", "1", "เปิด", "แสดง", "active"].includes(value);
-}
-
 function sanitizeChannelName(text, fallback = "ticket") {
   return String(text)
     .toLowerCase()
@@ -209,12 +208,19 @@ function sanitizeChannelName(text, fallback = "ticket") {
     .slice(0, 24) || fallback;
 }
 
-async function validateRoleSetup(guild, roleId = TARGET_ROLE_ID) {
+// =========================
+// ROLE HELPERS
+// =========================
+async function validateRoleSetup(guild, roleId) {
   const role = await guild.roles.fetch(roleId).catch(() => null);
-  if (!role) return { ok: false, message: `❌ ไม่พบ role ID: ${roleId}` };
+  if (!role) {
+    return { ok: false, message: `❌ ไม่พบ role ID: ${roleId}` };
+  }
 
   const botMember = guild.members.me;
-  if (!botMember) return { ok: false, message: "❌ ไม่พบบอทในเซิร์ฟเวอร์นี้" };
+  if (!botMember) {
+    return { ok: false, message: "❌ ไม่พบบอทในเซิร์ฟเวอร์นี้" };
+  }
 
   if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
     return { ok: false, message: "❌ บอทไม่มีสิทธิ์ Manage Roles" };
@@ -227,6 +233,24 @@ async function validateRoleSetup(guild, roleId = TARGET_ROLE_ID) {
   return { ok: true, role };
 }
 
+async function safelyGiveRole(guild, member, roleId, reason = "Role delivery") {
+  const guildRole = await guild.roles.fetch(roleId).catch(() => null);
+  if (!guildRole) {
+    return { ok: false, message: `ไม่พบ role ${roleId}` };
+  }
+
+  const botMember = guild.members.me;
+  if (!botMember || botMember.roles.highest.position <= guildRole.position) {
+    return { ok: false, message: `ให้ role ${guildRole.name} ไม่ได้ เพราะ role บอทต่ำกว่า` };
+  }
+
+  await member.roles.add(guildRole, reason).catch(() => null);
+  return { ok: true, role: guildRole };
+}
+
+// =========================
+// PERMISSION HELPERS
+// =========================
 function buildAdminOnlyOverwrites(guild) {
   const overwrites = [
     {
@@ -295,12 +319,10 @@ async function getOrCreateCategory(guild, name) {
   );
   if (category) return category;
 
-  category = await guild.channels.create({
+  return guild.channels.create({
     name,
     type: ChannelType.GuildCategory,
   });
-
-  return category;
 }
 
 async function getOrCreateTextChannel(guild, categoryName, channelName, topic = "", permissionOverwrites = null) {
@@ -315,15 +337,13 @@ async function getOrCreateTextChannel(guild, categoryName, channelName, topic = 
 
   if (channel) return channel;
 
-  channel = await guild.channels.create({
+  return guild.channels.create({
     name: channelName,
     type: ChannelType.GuildText,
     parent: category.id,
     topic,
     permissionOverwrites: permissionOverwrites || undefined,
   });
-
-  return channel;
 }
 
 async function getOrCreateVoiceChannel(guild, categoryName, channelBaseName) {
@@ -338,13 +358,11 @@ async function getOrCreateVoiceChannel(guild, categoryName, channelBaseName) {
 
   if (channel) return channel;
 
-  channel = await guild.channels.create({
+  return guild.channels.create({
     name: `${channelBaseName}: 0`,
     type: ChannelType.GuildVoice,
     parent: category.id,
   });
-
-  return channel;
 }
 
 async function getRolePanelChannel(guild) {
@@ -486,10 +504,8 @@ function buildRolePanelButtons() {
 }
 
 async function setupRolePanel(guild) {
-  const validation = await validateRoleSetup(guild);
-  if (!validation.ok) {
-    throw new Error(validation.message);
-  }
+  const validation = await validateRoleSetup(guild, TARGET_ROLE_ID);
+  if (!validation.ok) throw new Error(validation.message);
 
   const roleChannel = await getRolePanelChannel(guild);
   const messages = await roleChannel.messages.fetch({ limit: 50 }).catch(() => null);
@@ -513,7 +529,7 @@ async function setupRolePanel(guild) {
 }
 
 // =========================
-// SHOP / PRODUCT UI
+// SHOP UI
 // =========================
 function buildShopHeaderEmbed(guild) {
   const embed = new EmbedBuilder()
@@ -565,10 +581,7 @@ function buildProductDetailsEmbed(guild, product) {
       { name: "ราคา", value: product.price, inline: true },
       { name: "รหัสสินค้า", value: product.id, inline: true },
       { name: "หมวด", value: product.category || "ทั่วไป", inline: true },
-      {
-        name: "รายละเอียด",
-        value: product.description || "ไม่มีรายละเอียดสินค้า",
-      },
+      { name: "รายละเอียด", value: product.description || "ไม่มีรายละเอียดสินค้า" },
       {
         name: "การจัดส่ง",
         value: product.deliveryText
@@ -637,40 +650,16 @@ function buildAdminPanelButtons() {
 function buildProductManageButtons(productId) {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`manage_name_${productId}`)
-        .setLabel("แก้ชื่อ")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`manage_price_${productId}`)
-        .setLabel("แก้ราคา")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`manage_category_${productId}`)
-        .setLabel("แก้หมวด")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`manage_desc_${productId}`)
-        .setLabel("แก้รายละเอียด")
-        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`manage_name_${productId}`).setLabel("แก้ชื่อ").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`manage_price_${productId}`).setLabel("แก้ราคา").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`manage_category_${productId}`).setLabel("แก้หมวด").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`manage_desc_${productId}`).setLabel("แก้รายละเอียด").setStyle(ButtonStyle.Primary)
     ),
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`manage_delivery_${productId}`)
-        .setLabel("แก้ตัวสินค้า")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`manage_stock_${productId}`)
-        .setLabel("เพิ่มสต็อก")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`manage_toggle_${productId}`)
-        .setLabel("เปิด/ปิดขาย")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`manage_delete_${productId}`)
-        .setLabel("ลบสินค้า")
-        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`manage_delivery_${productId}`).setLabel("แก้ตัวสินค้า").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`manage_stock_${productId}`).setLabel("เพิ่มสต็อก").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`manage_toggle_${productId}`).setLabel("เปิด/ปิดขาย").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`manage_delete_${productId}`).setLabel("ลบสินค้า").setStyle(ButtonStyle.Danger)
     ),
   ];
 }
@@ -771,18 +760,15 @@ async function renderShopPanel(guild) {
   await clearBotMessages(headerChannel, 20);
   await clearBotMessages(productsChannel, 50);
 
-  await headerChannel.send({
-    embeds: [buildShopHeaderEmbed(guild)],
-  });
+  await headerChannel.send({ embeds: [buildShopHeaderEmbed(guild)] });
 
   const pages = getProductPages(products);
   const firstPageItems = pages[0];
   const embed = buildProductSelectEmbed(guild, 0, pages.length, firstPageItems);
-  const components = buildStoreComponents(products, 0);
 
   await productsChannel.send({
     embeds: [embed],
-    components,
+    components: buildStoreComponents(products, 0),
   });
 }
 
@@ -796,7 +782,7 @@ async function setupAdminPanel(guild) {
 }
 
 // =========================
-// ORDER / TICKET HELPERS
+// ORDER / DELIVERY HELPERS
 // =========================
 function findOpenOrderByUser(userId) {
   const orders = loadOrders();
@@ -865,14 +851,8 @@ function buildOrderTicketEmbed(order, product, user) {
 
 function buildTicketButtons(orderId, hasSlip = false) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`ticket_info_${orderId}`)
-      .setLabel("ข้อมูลออเดอร์")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`ticket_close_${orderId}`)
-      .setLabel("ปิด Ticket")
-      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`ticket_info_${orderId}`).setLabel("ข้อมูลออเดอร์").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`ticket_close_${orderId}`).setLabel("ปิด Ticket").setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId(`ticket_ready_${orderId}`)
       .setLabel(hasSlip ? "ส่งสลิปแล้ว" : "รอสลิป")
@@ -885,7 +865,6 @@ async function createPrivateOrderTicket(guild, member, product, order) {
   const existingChannel = order.ticketChannelId
     ? guild.channels.cache.get(order.ticketChannelId)
     : null;
-
   if (existingChannel) return existingChannel;
 
   const category = await getCustomerCategory(guild);
@@ -1103,7 +1082,7 @@ async function checkTicketTimeouts() {
 }
 
 // =========================
-// SETUP SYSTEM
+// SETUP
 // =========================
 async function setupLogs(guild) {
   await getLogChannel(guild, LOG_JOIN_LEAVE_NAME, "บันทึกสมาชิกเข้าออก");
@@ -1154,7 +1133,7 @@ client.once(Events.ClientReady, async (bot) => {
 });
 
 // =========================
-// MESSAGE COMMANDS / TICKET SLIP LISTENER
+// MESSAGE COMMANDS
 // =========================
 client.on(Events.MessageCreate, async (message) => {
   try {
@@ -1163,7 +1142,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     const admin = isAdmin(message.member);
 
-    // TICKET SLIP LISTENER
+    // ฟังสลิปใน ticket
     const orders = loadOrders();
     const orderByChannel = orders.find(
       (o) => o.ticketChannelId === message.channel.id && isActiveOrderStatus(o.status)
@@ -1210,14 +1189,8 @@ client.on(Events.MessageCreate, async (message) => {
         .setTimestamp();
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`approve_${updatedOrder.id}`)
-          .setLabel("อนุมัติ")
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId(`reject_${updatedOrder.id}`)
-          .setLabel("ปฏิเสธ")
-          .setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`approve_${updatedOrder.id}`).setLabel("อนุมัติ").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`reject_${updatedOrder.id}`).setLabel("ปฏิเสธ").setStyle(ButtonStyle.Danger)
       );
 
       const mentionText = STAFF_ALERT_ROLE_ID
@@ -1271,7 +1244,6 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    // COMMANDS
     if (message.content === `${PREFIX}setupall` || message.content === `${PREFIX}setup`) {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
       await setupAll(message.guild);
@@ -1370,15 +1342,16 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 // =========================
-// INTERACTIONS
+// INTERACTION HANDLERS
 // =========================
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.guild) return;
 
     if (interaction.isButton()) {
+      // ปุ่มรับยศ
       if (interaction.customId === ROLE_PANEL_BUTTON_ID) {
-        const validation = await validateRoleSetup(interaction.guild);
+        const validation = await validateRoleSetup(interaction.guild, TARGET_ROLE_ID);
         if (!validation.ok) {
           return interaction.reply({ content: validation.message, ephemeral: true });
         }
@@ -1416,14 +1389,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // ร้านค้าเปลี่ยนหน้า
       if (interaction.customId.startsWith("store_prev_") || interaction.customId.startsWith("store_next_")) {
         const products = loadProducts();
         const pages = getProductPages(products);
         const currentPage = Number(interaction.customId.split("_").pop()) || 0;
-        const nextPage =
-          interaction.customId.startsWith("store_prev_")
-            ? Math.max(0, currentPage - 1)
-            : Math.min(pages.length - 1, currentPage + 1);
+        const nextPage = interaction.customId.startsWith("store_prev_")
+          ? Math.max(0, currentPage - 1)
+          : Math.min(pages.length - 1, currentPage + 1);
 
         return interaction.update({
           embeds: [buildProductSelectEmbed(interaction.guild, nextPage, pages.length, pages[nextPage])],
@@ -1440,6 +1413,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // แผงแอดมิน
       if (interaction.customId === "admin_add_product") {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1451,39 +1425,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         modal.addComponents(
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId("name")
-              .setLabel("ชื่อสินค้า")
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true)
+            new TextInputBuilder().setCustomId("name").setLabel("ชื่อสินค้า").setStyle(TextInputStyle.Short).setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId("price")
-              .setLabel("ราคา")
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true)
+            new TextInputBuilder().setCustomId("price").setLabel("ราคา").setStyle(TextInputStyle.Short).setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId("category")
-              .setLabel("หมวดสินค้า")
-              .setStyle(TextInputStyle.Short)
-              .setRequired(false)
+            new TextInputBuilder().setCustomId("category").setLabel("หมวดสินค้า").setStyle(TextInputStyle.Short).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId("description")
-              .setLabel("รายละเอียดสินค้า")
-              .setStyle(TextInputStyle.Paragraph)
-              .setRequired(true)
+            new TextInputBuilder().setCustomId("description").setLabel("รายละเอียดสินค้า").setStyle(TextInputStyle.Paragraph).setRequired(true)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId("delivery")
-              .setLabel("ตัวสินค้า / ข้อความหลังซื้อ")
-              .setStyle(TextInputStyle.Paragraph)
-              .setRequired(false)
+            new TextInputBuilder().setCustomId("delivery").setLabel("ตัวสินค้า / ข้อความหลังซื้อ").setStyle(TextInputStyle.Paragraph).setRequired(false)
           )
         );
 
@@ -1526,6 +1480,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // ปุ่มจัดการสินค้า
       if (interaction.customId.startsWith("manage_")) {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1609,6 +1564,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.showModal(modal);
       }
 
+      // ปุ่มข้อมูลออเดอร์
       if (interaction.customId.startsWith("ticket_info_")) {
         const orderId = interaction.customId.replace("ticket_info_", "");
         const order = findOrderById(orderId);
@@ -1637,6 +1593,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // ปุ่มปิด ticket
       if (interaction.customId.startsWith("ticket_close_")) {
         const orderId = interaction.customId.replace("ticket_close_", "");
         const order = findOrderById(orderId);
@@ -1689,6 +1646,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      // ปุ่มอนุมัติสลิป
       if (interaction.customId.startsWith("approve_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์อนุมัติรายการนี้", ephemeral: true });
@@ -1696,7 +1654,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const orderId = interaction.customId.replace("approve_", "");
         const order = findOrderById(orderId);
-
         if (!order) {
           return interaction.reply({ content: "❌ ไม่พบออเดอร์นี้แล้ว", ephemeral: true });
         }
@@ -1706,16 +1663,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return interaction.reply({ content: "❌ ไม่พบสมาชิกคนนี้แล้ว", ephemeral: true });
         }
 
-        const roleValidation = await validateRoleSetup(interaction.guild, PURCHASE_ROLE_ID);
-        if (!roleValidation.ok) {
-          return interaction.reply({ content: roleValidation.message, ephemeral: true });
-        }
-
         const products = loadProducts();
         const productIndex = products.findIndex((p) => p.id === order.productId);
         const product = productIndex !== -1 ? products[productIndex] : null;
 
-        await member.roles.add(roleValidation.role, "Approved payment by admin");
+        let baseRole = null;
+        if (PURCHASE_ROLE_ID) {
+          const baseRoleResult = await safelyGiveRole(
+            interaction.guild,
+            member,
+            PURCHASE_ROLE_ID,
+            `Approved payment by admin for ${orderId}`
+          );
+
+          if (!baseRoleResult.ok) {
+            return interaction.reply({
+              content: `❌ ให้ยศหลักไม่สำเร็จ: ${baseRoleResult.message}`,
+              ephemeral: true,
+            });
+          }
+
+          baseRole = baseRoleResult.role;
+        }
 
         let deliveries = [];
         if (product) {
@@ -1729,22 +1698,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         for (const item of deliveries) {
           if (item.type === "role") {
-            const roleId = String(item.value).trim();
-            const guildRole = await interaction.guild.roles.fetch(roleId).catch(() => null);
+            const roleResult = await safelyGiveRole(
+              interaction.guild,
+              member,
+              item.value,
+              `Stock role delivery for order ${orderId}`
+            );
 
-            if (!guildRole) {
-              failedRoles.push(`ไม่พบ role ${roleId}`);
-              continue;
+            if (roleResult.ok) {
+              grantedRoles.push(roleResult.role);
+            } else {
+              failedRoles.push(roleResult.message);
             }
-
-            const botMember = interaction.guild.members.me;
-            if (!botMember || botMember.roles.highest.position <= guildRole.position) {
-              failedRoles.push(`ให้ role ${guildRole.name} ไม่ได้ เพราะ role บอทต่ำกว่า`);
-              continue;
-            }
-
-            await member.roles.add(guildRole, `Stock role delivery for order ${orderId}`).catch(() => null);
-            grantedRoles.push(guildRole);
           } else {
             textDeliveries.push(item.value);
           }
@@ -1763,27 +1728,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
           : null;
 
         if (ticketChannel) {
-          const deliveredEmbed = new EmbedBuilder()
-            .setColor(COLORS.green)
-            .setTitle("ชำระเงินสำเร็จ")
-            .setDescription(
-              [
-                `${member}`,
-                "",
-                product ? `> **สินค้า:** ${product.name}` : null,
-                `> **ยศหลักที่ได้รับ:** <@&${PURCHASE_ROLE_ID}>`,
-                grantedRoles.length
-                  ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}`
-                  : null,
-                "",
-                "ทีมงานอนุมัติรายการของคุณเรียบร้อยแล้ว",
-              ]
-                .filter(Boolean)
-                .join("\n")
-            );
-
           await ticketChannel.send({
-            embeds: [deliveredEmbed],
+            embeds: [
+              new EmbedBuilder()
+                .setColor(COLORS.green)
+                .setTitle("ชำระเงินสำเร็จ")
+                .setDescription(
+                  [
+                    `${member}`,
+                    "",
+                    product ? `> **สินค้า:** ${product.name}` : null,
+                    baseRole ? `> **ยศหลักที่ได้รับ:** <@&${baseRole.id}>` : null,
+                    grantedRoles.length
+                      ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}`
+                      : null,
+                    "",
+                    "ทีมงานอนุมัติรายการของคุณเรียบร้อยแล้ว",
+                  ]
+                    .filter(Boolean)
+                    .join("\n")
+                ),
+            ],
             components: [buildTicketButtons(orderId, true)],
           }).catch(() => {});
 
@@ -1809,7 +1774,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             }).catch(() => {});
           }
 
-          if (!textDeliveries.length && !grantedRoles.length) {
+          if (!baseRole && !textDeliveries.length && !grantedRoles.length) {
             await ticketChannel.send("ℹ️ สินค้านี้ยังไม่มีตัวสินค้าอัตโนมัติ กรุณารอทีมงาน").catch(() => {});
           }
         }
@@ -1825,7 +1790,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 `> **เลขออเดอร์:** ${updated.id}`,
                 `> **ลูกค้า:** ${member.user.tag}`,
                 product ? `> **สินค้า:** ${product.name}` : null,
-                `> **ยศหลัก:** <@&${PURCHASE_ROLE_ID}>`,
+                baseRole ? `> **ยศหลัก:** <@&${baseRole.id}>` : null,
                 grantedRoles.length
                   ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}`
                   : null,
@@ -1842,7 +1807,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const dmLines = [
             "✅ การชำระเงินของคุณได้รับการอนุมัติแล้ว",
             product ? `สินค้า: ${product.name}` : null,
-            `ยศหลักที่ได้รับ: <@&${PURCHASE_ROLE_ID}>`,
+            baseRole ? `ยศหลักที่ได้รับ: ${baseRole.name}` : null,
             grantedRoles.length ? `ยศจาก stock: ${grantedRoles.map((r) => r.name).join(", ")}` : null,
             textDeliveries.length ? "\nตัวสินค้า / รายละเอียด:" : null,
             ...textDeliveries.map((d) => `- ${d}`),
@@ -1859,6 +1824,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // ปุ่มปฏิเสธ
       if (interaction.customId.startsWith("reject_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์ปฏิเสธรายการนี้", ephemeral: true });
