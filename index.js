@@ -40,14 +40,14 @@ const PREFIX = "!";
 // ROLE
 const TARGET_ROLE_ID = "1347851123364593753";
 const PURCHASE_ROLE_ID = TARGET_ROLE_ID;
+const ROLE_PANEL_BUTTON_ID = "toggle_role_1347851123364593753";
 
-// ถ้ามี role ทีมตรวจสลิป ใส่ตรงนี้
+// ใส่ role ทีมตรวจสลิปได้
 const STAFF_ALERT_ROLE_ID = "";
 const REVIEWER_ROLE_ID = "";
 
 // IMAGES
-const ROLE_PANEL_GIF =
-  "https://i.postimg.cc/BvgsywmH/snaptik-7505147525616176389-hd.gif";
+const ROLE_PANEL_GIF = "https://i.postimg.cc/BvgsywmH/snaptik-7505147525616176389-hd.gif";
 const SHOP_BANNER = "";
 
 // COLORS
@@ -80,6 +80,7 @@ const PRODUCTS_CHANNEL_NAME = "📦│เลือกสินค้า";
 const VERIFY_CHANNEL_NAME = "🔍│ตรวจสลิป";
 
 const ROLE_CHANNEL_NAME = "🎭│รับยศ";
+
 const ADMIN_PANEL_CHANNEL_NAME = "🛠│product-control";
 
 const LOG_JOIN_LEAVE_NAME = "📝│member-logs";
@@ -98,8 +99,8 @@ const PRODUCTS_PER_PAGE = 10;
 const TRANSCRIPT_MESSAGE_LIMIT = 300;
 
 // TIMEOUTS
-const TICKET_WARN_AFTER_MS = 30 * 60 * 1000; // 30 นาที
-const TICKET_CLOSE_AFTER_MS = 2 * 60 * 60 * 1000; // 2 ชั่วโมง
+const TICKET_WARN_AFTER_MS = 30 * 60 * 1000;
+const TICKET_CLOSE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 // =========================
 // FILE HELPERS
@@ -161,7 +162,7 @@ function generateOrderId(orders) {
 }
 
 // =========================
-// STATUS / COMMON HELPERS
+// STATUS / TEXT HELPERS
 // =========================
 function getOrderStatusText(status) {
   const map = {
@@ -179,10 +180,6 @@ function getOrderStatusText(status) {
 
 function isActiveOrderStatus(status) {
   return ["pending", "waiting_slip", "reviewing", "approved"].includes(status);
-}
-
-function isOpenTicketStatus(status) {
-  return ["waiting_slip", "reviewing", "approved"].includes(status);
 }
 
 function isAdmin(member) {
@@ -212,21 +209,12 @@ function sanitizeChannelName(text, fallback = "ticket") {
     .slice(0, 24) || fallback;
 }
 
-function safeCategory(value) {
-  return String(value || "ทั่วไป").trim() || "ทั่วไป";
-}
-
 async function validateRoleSetup(guild, roleId = TARGET_ROLE_ID) {
   const role = await guild.roles.fetch(roleId).catch(() => null);
-
-  if (!role) {
-    return { ok: false, message: `❌ ไม่พบ role ID: ${roleId}` };
-  }
+  if (!role) return { ok: false, message: `❌ ไม่พบ role ID: ${roleId}` };
 
   const botMember = guild.members.me;
-  if (!botMember) {
-    return { ok: false, message: "❌ ไม่พบบอทในเซิร์ฟเวอร์นี้" };
-  }
+  if (!botMember) return { ok: false, message: "❌ ไม่พบบอทในเซิร์ฟเวอร์นี้" };
 
   if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
     return { ok: false, message: "❌ บอทไม่มีสิทธิ์ Manage Roles" };
@@ -305,6 +293,7 @@ async function getOrCreateCategory(guild, name) {
   let category = guild.channels.cache.find(
     (ch) => ch.type === ChannelType.GuildCategory && ch.name === name
   );
+
   if (category) return category;
 
   category = await guild.channels.create({
@@ -315,13 +304,7 @@ async function getOrCreateCategory(guild, name) {
   return category;
 }
 
-async function getOrCreateTextChannel(
-  guild,
-  categoryName,
-  channelName,
-  topic = "",
-  permissionOverwrites = null
-) {
+async function getOrCreateTextChannel(guild, categoryName, channelName, topic = "", permissionOverwrites = null) {
   const category = await getOrCreateCategory(guild, categoryName);
 
   let channel = guild.channels.cache.find(
@@ -454,35 +437,17 @@ async function updateServerStatusChannels(guild) {
       return status && status !== "offline";
     }).size;
 
-    const totalChannel = await getOrCreateVoiceChannel(
-      guild,
-      STATUS_CATEGORY_NAME,
-      STATUS_TOTAL_NAME
-    );
-    const onlineChannel = await getOrCreateVoiceChannel(
-      guild,
-      STATUS_CATEGORY_NAME,
-      STATUS_ONLINE_NAME
-    );
-    const botChannel = await getOrCreateVoiceChannel(
-      guild,
-      STATUS_CATEGORY_NAME,
-      STATUS_BOT_NAME
-    );
+    const totalChannel = await getOrCreateVoiceChannel(guild, STATUS_CATEGORY_NAME, STATUS_TOTAL_NAME);
+    const onlineChannel = await getOrCreateVoiceChannel(guild, STATUS_CATEGORY_NAME, STATUS_ONLINE_NAME);
+    const botChannel = await getOrCreateVoiceChannel(guild, STATUS_CATEGORY_NAME, STATUS_BOT_NAME);
 
     const totalName = `${STATUS_TOTAL_NAME}: ${totalMembers}`;
     const onlineName = `${STATUS_ONLINE_NAME}: ${onlineCount}`;
     const botName = `${STATUS_BOT_NAME}: ${botCount}`;
 
-    if (totalChannel.name !== totalName) {
-      await totalChannel.setName(totalName).catch(() => {});
-    }
-    if (onlineChannel.name !== onlineName) {
-      await onlineChannel.setName(onlineName).catch(() => {});
-    }
-    if (botChannel.name !== botName) {
-      await botChannel.setName(botName).catch(() => {});
-    }
+    if (totalChannel.name !== totalName) await totalChannel.setName(totalName).catch(() => {});
+    if (onlineChannel.name !== onlineName) await onlineChannel.setName(onlineName).catch(() => {});
+    if (botChannel.name !== botName) await botChannel.setName(botName).catch(() => {});
   } catch (error) {
     console.error(`Status update failed in ${guild.name}:`, error);
   }
@@ -514,7 +479,7 @@ function buildRolePanelEmbed(guild) {
 function buildRolePanelButtons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId("role_toggle")
+      .setCustomId(ROLE_PANEL_BUTTON_ID)
       .setLabel("รับยศ / เอายศออก")
       .setEmoji("⚡")
       .setStyle(ButtonStyle.Danger)
@@ -524,30 +489,32 @@ function buildRolePanelButtons() {
 async function setupRolePanel(guild) {
   const validation = await validateRoleSetup(guild);
   if (!validation.ok) {
-    console.error(validation.message);
-    return;
+    throw new Error(validation.message);
   }
 
   const roleChannel = await getRolePanelChannel(guild);
-  const messages = await roleChannel.messages.fetch({ limit: 30 }).catch(() => null);
+  const messages = await roleChannel.messages.fetch({ limit: 50 }).catch(() => null);
 
   if (messages) {
-    const botMessages = messages.filter((m) => m.author.id === client.user.id);
-    for (const msg of botMessages.values()) {
+    const oldPanels = messages.filter(
+      (m) =>
+        m.author.id === client.user.id &&
+        m.components?.length &&
+        m.components[0].components.some((c) => c.customId === ROLE_PANEL_BUTTON_ID)
+    );
+    for (const msg of oldPanels.values()) {
       await msg.delete().catch(() => {});
     }
   }
 
-  await roleChannel
-    .send({
-      embeds: [buildRolePanelEmbed(guild)],
-      components: [buildRolePanelButtons()],
-    })
-    .catch((err) => console.error("setupRolePanel send error:", err));
+  await roleChannel.send({
+    embeds: [buildRolePanelEmbed(guild)],
+    components: [buildRolePanelButtons()],
+  });
 }
 
 // =========================
-// SHOP UI
+// SHOP / PRODUCT UI
 // =========================
 function buildShopHeaderEmbed(guild) {
   const embed = new EmbedBuilder()
@@ -559,15 +526,32 @@ function buildShopHeaderEmbed(guild) {
     .setTitle("✦ ร้านค้า")
     .setDescription(
       [
-        "เลือกหมวดและสินค้าได้จากห้องด้านล่าง",
+        "เลือกรายการจากเมนูในห้องเลือกสินค้าได้ทันที",
         "",
-        "เมื่อเลือกสินค้าแล้ว ระบบจะเปิด ticket ส่วนตัวให้อัตโนมัติ",
+        "เมื่อเลือกสินค้าแล้ว ระบบจะเปิดห้อง ticket ส่วนตัวให้คุณอัตโนมัติ",
         "> ใน ticket คุณจะเห็นรายละเอียดสินค้าและส่งสลิปได้แบบส่วนตัว",
       ].join("\n")
     );
 
   if (SHOP_BANNER) embed.setImage(SHOP_BANNER);
   return embed;
+}
+
+function buildProductSelectEmbed(guild, page, totalPages, items) {
+  const lines = items.map(
+    (p, i) =>
+      `**${i + 1}. ${p.name}** — ${p.price}${p.stockCount !== undefined ? ` • คงเหลือ ${p.stockCount}` : ""}\nหมวด: ${p.category || "ทั่วไป"} • \`${p.id}\``
+  );
+
+  return new EmbedBuilder()
+    .setColor(COLORS.shop)
+    .setAuthor({
+      name: `${guild.name} • Product Selection`,
+      iconURL: guild.iconURL({ dynamic: true }) || undefined,
+    })
+    .setTitle("✦ เลือกสินค้า")
+    .setDescription(lines.join("\n\n") || "ยังไม่มีสินค้า")
+    .setFooter({ text: `หน้า ${page + 1}/${totalPages}` });
 }
 
 function buildProductDetailsEmbed(guild, product) {
@@ -581,7 +565,7 @@ function buildProductDetailsEmbed(guild, product) {
     .addFields(
       { name: "ราคา", value: product.price, inline: true },
       { name: "รหัสสินค้า", value: product.id, inline: true },
-      { name: "หมวด", value: safeCategory(product.category), inline: true },
+      { name: "หมวด", value: product.category || "ทั่วไป", inline: true },
       {
         name: "รายละเอียด",
         value: product.description || "ไม่มีรายละเอียดสินค้า",
@@ -594,9 +578,7 @@ function buildProductDetailsEmbed(guild, product) {
       },
       {
         name: "สต็อก",
-        value: Array.isArray(product.stocks)
-          ? `เหลือ ${product.stocks.length} ชิ้น`
-          : "ไม่มีระบบสต็อก",
+        value: Array.isArray(product.stocks) ? `เหลือ ${product.stocks.length} ชิ้น` : "ไม่มีระบบสต็อก",
         inline: true,
       },
       {
@@ -671,7 +653,7 @@ function buildProductManageButtons(productId) {
       new ButtonBuilder()
         .setCustomId(`manage_desc_${productId}`)
         .setLabel("แก้รายละเอียด")
-        .setStyle(ButtonStyle.Primary)
+        .setStyle(ButtonStyle.Primary),
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -689,112 +671,77 @@ function buildProductManageButtons(productId) {
       new ButtonBuilder()
         .setCustomId(`manage_delete_${productId}`)
         .setLabel("ลบสินค้า")
-        .setStyle(ButtonStyle.Danger)
+        .setStyle(ButtonStyle.Danger),
     ),
   ];
 }
 
 function getVisibleProducts(products) {
-  return products.filter((p) => p.active !== false);
+  return products
+    .filter((p) => p.active !== false)
+    .map((p) => ({
+      ...p,
+      stockCount: Array.isArray(p.stocks) ? p.stocks.length : undefined,
+    }));
 }
 
-function getAllCategories(products) {
+function getProductPages(products) {
   const visible = getVisibleProducts(products);
-  const set = new Set(visible.map((p) => safeCategory(p.category)));
-  return ["ทั้งหมด", ...Array.from(set)];
-}
-
-function filterProductsByCategory(products, category) {
-  const visible = getVisibleProducts(products);
-  if (!category || category === "ทั้งหมด") return visible;
-  return visible.filter((p) => safeCategory(p.category) === category);
-}
-
-function paginateProducts(products, page = 0) {
   const pages = [];
-  for (let i = 0; i < products.length; i += PRODUCTS_PER_PAGE) {
-    pages.push(products.slice(i, i + PRODUCTS_PER_PAGE));
+  for (let i = 0; i < visible.length; i += PRODUCTS_PER_PAGE) {
+    pages.push(visible.slice(i, i + PRODUCTS_PER_PAGE));
   }
-  const safePages = pages.length ? pages : [[]];
-  const safePage = Math.max(0, Math.min(page, safePages.length - 1));
-  return { pages: safePages, page: safePage, items: safePages[safePage] };
+  return pages.length ? pages : [[]];
 }
 
-function buildStoreViewEmbed(guild, allProducts, category = "ทั้งหมด", page = 0) {
-  const filtered = filterProductsByCategory(allProducts, category).map((p) => ({
-    ...p,
-    stockCount: Array.isArray(p.stocks) ? p.stocks.length : 0,
-  }));
-  const { pages, page: safePage, items } = paginateProducts(filtered, page);
+async function clearBotMessages(channel, limit = 100) {
+  const messages = await channel.messages.fetch({ limit }).catch(() => null);
+  if (!messages) return;
 
-  const lines = items.length
-    ? items.map(
-        (p, i) =>
-          `**${i + 1}. ${p.name}** — ${p.price}\nหมวด: ${safeCategory(p.category)} • คงเหลือ ${p.stockCount} • \`${p.id}\``
-      )
-    : ["ยังไม่มีสินค้าในหมวดนี้"];
-
-  return new EmbedBuilder()
-    .setColor(COLORS.shop)
-    .setAuthor({
-      name: `${guild.name} • Product Selection`,
-      iconURL: guild.iconURL({ dynamic: true }) || undefined,
-    })
-    .setTitle("✦ เลือกสินค้า")
-    .setDescription(lines.join("\n\n"))
-    .setFooter({ text: `หมวด: ${category} • หน้า ${safePage + 1}/${pages.length}` });
+  const botMessages = messages.filter((m) => m.author.id === client.user.id);
+  for (const msg of botMessages.values()) {
+    await msg.delete().catch(() => {});
+  }
 }
 
-function buildStoreViewComponents(allProducts, category = "ทั้งหมด", page = 0) {
-  const categories = getAllCategories(allProducts);
-  const filtered = filterProductsByCategory(allProducts, category);
-  const { pages, page: safePage, items } = paginateProducts(filtered, page);
+function buildStoreComponents(products, page = 0) {
+  const pages = getProductPages(products);
+  const current = pages[page] || [];
 
-  const categorySelect = new StringSelectMenuBuilder()
-    .setCustomId(`store_category|${safePage}`)
-    .setPlaceholder("เลือกหมวดสินค้า")
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`store_select_${page}`)
+    .setPlaceholder(current.length ? "เลือกสินค้าที่ต้องการ" : "ยังไม่มีสินค้า")
+    .setDisabled(current.length === 0)
     .addOptions(
-      categories.slice(0, 25).map((cat) => ({
-        label: cat,
-        value: cat,
-        default: cat === category,
-      }))
-    );
-
-  const productSelect = new StringSelectMenuBuilder()
-    .setCustomId(`store_product|${category}|${safePage}`)
-    .setPlaceholder(items.length ? "เลือกสินค้าที่ต้องการ" : "ยังไม่มีสินค้า")
-    .setDisabled(!items.length)
-    .addOptions(
-      items.length
-        ? items.map((p) => ({
+      current.length
+        ? current.map((p) => ({
             label: p.name.slice(0, 100),
-            description: `${p.price} | คงเหลือ ${Array.isArray(p.stocks) ? p.stocks.length : 0}`.slice(0, 100),
+            description: `${p.price}${p.stockCount !== undefined ? ` | คงเหลือ ${p.stockCount}` : ""}`.slice(0, 100),
             value: p.id,
           }))
         : [{ label: "ยังไม่มีสินค้า", value: "empty", description: "ไม่มีสินค้าในตอนนี้" }]
     );
 
-  const row1 = new ActionRowBuilder().addComponents(categorySelect);
-  const row2 = new ActionRowBuilder().addComponents(productSelect);
-  const row3 = new ActionRowBuilder().addComponents(
+  const row1 = new ActionRowBuilder().addComponents(select);
+
+  const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`store_prev|${category}|${safePage}`)
+      .setCustomId(`store_prev_${page}`)
       .setLabel("ก่อนหน้า")
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(safePage <= 0),
+      .setDisabled(page <= 0),
     new ButtonBuilder()
-      .setCustomId(`store_next|${category}|${safePage}`)
+      .setCustomId(`store_next_${page}`)
       .setLabel("ถัดไป")
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(safePage >= pages.length - 1),
+      .setDisabled(page >= pages.length - 1),
     new ButtonBuilder()
       .setCustomId("store_refresh")
       .setLabel("รีเฟรช")
       .setStyle(ButtonStyle.Primary)
   );
 
-  return [row1, row2, row3];
+  return [row1, row2];
 }
 
 function buildManageSelect(products) {
@@ -817,16 +764,6 @@ function buildManageSelect(products) {
   );
 }
 
-async function clearBotMessages(channel, limit = 100) {
-  const messages = await channel.messages.fetch({ limit }).catch(() => null);
-  if (!messages) return;
-
-  const botMessages = messages.filter((m) => m.author.id === client.user.id);
-  for (const msg of botMessages.values()) {
-    await msg.delete().catch(() => {});
-  }
-}
-
 async function renderShopPanel(guild) {
   const headerChannel = await getShopHeaderChannel(guild);
   const productsChannel = await getProductsChannel(guild);
@@ -837,12 +774,17 @@ async function renderShopPanel(guild) {
 
   await headerChannel.send({
     embeds: [buildShopHeaderEmbed(guild)],
-  }).catch(() => {});
+  });
+
+  const pages = getProductPages(products);
+  const firstPageItems = pages[0];
+  const embed = buildProductSelectEmbed(guild, 0, pages.length, firstPageItems);
+  const components = buildStoreComponents(products, 0);
 
   await productsChannel.send({
-    embeds: [buildStoreViewEmbed(guild, products, "ทั้งหมด", 0)],
-    components: buildStoreViewComponents(products, "ทั้งหมด", 0),
-  }).catch((err) => console.error("renderShopPanel error:", err));
+    embeds: [embed],
+    components,
+  });
 }
 
 async function setupAdminPanel(guild) {
@@ -851,7 +793,7 @@ async function setupAdminPanel(guild) {
   await channel.send({
     embeds: [buildAdminPanelEmbed(guild)],
     components: buildAdminPanelButtons(),
-  }).catch(() => {});
+  });
 }
 
 // =========================
@@ -948,6 +890,7 @@ async function createPrivateOrderTicket(guild, member, product, order) {
   if (existingChannel) return existingChannel;
 
   const category = await getCustomerCategory(guild);
+
   const safeName = sanitizeChannelName(member.user.username, member.id);
   const channelName = `🎫│${safeName}-${order.id.toLowerCase()}`;
 
@@ -1007,18 +950,14 @@ async function createPrivateOrderTicket(guild, member, product, order) {
     content: `${member}`,
     embeds: [buildOrderTicketEmbed({ ...order, status: "waiting_slip" }, product, member)],
     components: [buildTicketButtons(order.id, false)],
-  }).catch(() => {});
+  });
 
   return channel;
 }
 
 function getDuplicateSlipWarning(currentOrderId, slipUrl) {
   const orders = loadOrders();
-  return (
-    orders.find(
-      (o) => o.id !== currentOrderId && o.slipUrl && o.slipUrl === slipUrl
-    ) || null
-  );
+  return orders.find((o) => o.id !== currentOrderId && o.slipUrl && o.slipUrl === slipUrl) || null;
 }
 
 function deliverProductContent(product) {
@@ -1037,9 +976,7 @@ function deliverProductContent(product) {
 }
 
 async function createTranscriptAttachment(channel) {
-  const fetched = await channel.messages
-    .fetch({ limit: TRANSCRIPT_MESSAGE_LIMIT })
-    .catch(() => null);
+  const fetched = await channel.messages.fetch({ limit: TRANSCRIPT_MESSAGE_LIMIT }).catch(() => null);
   if (!fetched) return null;
 
   const rows = [...fetched.values()]
@@ -1047,13 +984,9 @@ async function createTranscriptAttachment(channel) {
     .map((m) => {
       const time = new Date(m.createdTimestamp).toLocaleString("th-TH");
       const author = m.author?.tag || "Unknown";
-      const content = (m.content || "")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+      const content = (m.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const attachments = m.attachments.size
-        ? `<div class="attach">${[...m.attachments.values()]
-            .map((a) => `<a href="${a.url}">${a.url}</a>`)
-            .join("<br>")}</div>`
+        ? `<div class="attach">${[...m.attachments.values()].map((a) => `<a href="${a.url}">${a.url}</a>`).join("<br>")}</div>`
         : "";
       return `
         <div class="msg">
@@ -1095,9 +1028,7 @@ async function checkTicketTimeouts() {
   const orders = loadOrders();
 
   for (const guild of client.guilds.cache.values()) {
-    const guildOrders = orders.filter(
-      (o) => o.ticketChannelId && o.userId && o.status === "waiting_slip"
-    );
+    const guildOrders = orders.filter((o) => o.ticketChannelId && o.status === "waiting_slip");
 
     for (const order of guildOrders) {
       const channel = guild.channels.cache.get(order.ticketChannelId);
@@ -1130,9 +1061,7 @@ async function checkTicketTimeouts() {
           transcript ? [transcript] : []
         );
 
-        await channel
-          .send("⏰ ระบบปิด ticket นี้อัตโนมัติเนื่องจากหมดเวลา")
-          .catch(() => {});
+        await channel.send("⏰ ระบบปิด ticket นี้อัตโนมัติเนื่องจากหมดเวลา").catch(() => {});
         setTimeout(async () => {
           await channel.delete().catch(() => {});
         }, 3000);
@@ -1145,11 +1074,7 @@ async function checkTicketTimeouts() {
           warnedAt: Date.now(),
         }));
 
-        await channel
-          .send(
-            "⚠ กรุณาส่งสลิปภายในเวลาที่กำหนด ไม่เช่นนั้น ticket นี้จะถูกปิดอัตโนมัติ"
-          )
-          .catch(() => {});
+        await channel.send("⚠ กรุณาส่งสลิปภายในเวลาที่กำหนด ไม่เช่นนั้น ticket นี้จะถูกปิดอัตโนมัติ").catch(() => {});
       }
     }
   }
@@ -1174,12 +1099,14 @@ async function setupStore(guild) {
 }
 
 async function setupAll(guild) {
-  await getOrCreateCategory(guild, STATUS_CATEGORY_NAME);
-  await getOrCreateCategory(guild, STORE_CATEGORY_NAME);
-  await getOrCreateCategory(guild, CUSTOMER_CATEGORY_NAME);
-  await getOrCreateCategory(guild, ROLE_CATEGORY_NAME);
-  await getOrCreateCategory(guild, LOG_CATEGORY_NAME);
-  await getOrCreateCategory(guild, ADMIN_CATEGORY_NAME);
+  const created = [];
+
+  await getOrCreateCategory(guild, STATUS_CATEGORY_NAME); created.push(STATUS_CATEGORY_NAME);
+  await getOrCreateCategory(guild, STORE_CATEGORY_NAME); created.push(STORE_CATEGORY_NAME);
+  await getOrCreateCategory(guild, CUSTOMER_CATEGORY_NAME); created.push(CUSTOMER_CATEGORY_NAME);
+  await getOrCreateCategory(guild, ROLE_CATEGORY_NAME); created.push(ROLE_CATEGORY_NAME);
+  await getOrCreateCategory(guild, LOG_CATEGORY_NAME); created.push(LOG_CATEGORY_NAME);
+  await getOrCreateCategory(guild, ADMIN_CATEGORY_NAME); created.push(ADMIN_CATEGORY_NAME);
 
   await ensureStatusChannels(guild);
   await updateServerStatusChannels(guild);
@@ -1187,6 +1114,8 @@ async function setupAll(guild) {
   await setupStore(guild);
   await setupRolePanel(guild);
   await setupAdminPanel(guild);
+
+  return created;
 }
 
 // =========================
@@ -1197,11 +1126,13 @@ client.once(Events.ClientReady, async (bot) => {
   ensureJsonFile(ORDERS_FILE);
   console.log(`✅ Logged in as ${bot.user.tag}`);
 
+  // รอบนี้ไม่ auto setup
+  // ป้องกันปัญหาลบห้องแล้วเด้งกลับเอง
   setInterval(async () => {
     for (const guild of client.guilds.cache.values()) {
-      await updateServerStatusChannels(guild);
+      await updateServerStatusChannels(guild).catch(() => {});
     }
-    await checkTicketTimeouts();
+    await checkTicketTimeouts().catch(() => {});
   }, STATUS_UPDATE_INTERVAL);
 });
 
@@ -1220,7 +1151,7 @@ client.on(Events.MessageCreate, async (message) => {
     // =========================
     const orders = loadOrders();
     const orderByChannel = orders.find(
-      (o) => o.ticketChannelId === message.channel.id && isOpenTicketStatus(o.status)
+      (o) => o.ticketChannelId === message.channel.id && isActiveOrderStatus(o.status)
     );
 
     if (orderByChannel) {
@@ -1278,13 +1209,11 @@ client.on(Events.MessageCreate, async (message) => {
         ? `<@&${STAFF_ALERT_ROLE_ID}> มีสลิปใหม่`
         : "มีสลิปใหม่รอการตรวจ";
 
-      const verifyMsg = await verifyChannel
-        .send({
-          content: mentionText,
-          embeds: [verifyEmbed],
-          components: [row],
-        })
-        .catch(() => null);
+      const verifyMsg = await verifyChannel.send({
+        content: mentionText,
+        embeds: [verifyEmbed],
+        components: [row],
+      }).catch(() => null);
 
       if (verifyMsg) {
         updateOrder(updatedOrder.id, (old) => ({
@@ -1294,57 +1223,33 @@ client.on(Events.MessageCreate, async (message) => {
         }));
       }
 
-      await message
-        .reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(COLORS.blue)
-              .setTitle("ส่งสลิปเรียบร้อย")
-              .setDescription("ระบบส่งสลิปของคุณไปให้ทีมงานตรวจแล้ว กรุณารอการยืนยัน"),
-          ],
-        })
-        .catch(() => {});
+      await message.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(COLORS.blue)
+            .setTitle("ส่งสลิปเรียบร้อย")
+            .setDescription("ระบบส่งสลิปของคุณไปให้ทีมงานตรวจแล้ว กรุณารอการยืนยัน")
+        ],
+      }).catch(() => {});
 
-      const recent = await message.channel.messages.fetch({ limit: 10 }).catch(() => null);
-      if (recent) {
-        const botTicketMsg = recent.find(
-          (m) =>
-            m.author.id === client.user.id &&
-            m.components?.length &&
-            m.components[0].components.some(
-              (c) => c.customId === `ticket_info_${updatedOrder.id}`
-            )
-        );
-        if (botTicketMsg) {
-          await botTicketMsg
-            .edit({
-              embeds: botTicketMsg.embeds,
-              components: [buildTicketButtons(updatedOrder.id, true)],
-            })
-            .catch(() => {});
-        }
-      }
+      const logEmbed = new EmbedBuilder()
+        .setColor(COLORS.yellow)
+        .setTitle("ลูกค้าส่งสลิป")
+        .setDescription(
+          [
+            `> **เลขออเดอร์:** ${updatedOrder.id}`,
+            `> **ลูกค้า:** ${message.author.tag}`,
+            `> **สินค้า:** ${product.name}`,
+            `> **ราคา:** ${product.price}`,
+            duplicate ? `> **หมายเหตุ:** สลิปซ้ำกับ ${duplicate.id}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n")
+        )
+        .setImage(attachment.url)
+        .setTimestamp();
 
-      await sendLog(
-        message.guild,
-        LOG_PAYMENT_NAME,
-        new EmbedBuilder()
-          .setColor(COLORS.yellow)
-          .setTitle("ลูกค้าส่งสลิป")
-          .setDescription(
-            [
-              `> **เลขออเดอร์:** ${updatedOrder.id}`,
-              `> **ลูกค้า:** ${message.author.tag}`,
-              `> **สินค้า:** ${product.name}`,
-              `> **ราคา:** ${product.price}`,
-              duplicate ? `> **หมายเหตุ:** สลิปซ้ำกับ ${duplicate.id}` : null,
-            ]
-              .filter(Boolean)
-              .join("\n")
-          )
-          .setImage(attachment.url)
-          .setTimestamp()
-      );
+      await sendLog(message.guild, LOG_PAYMENT_NAME, logEmbed);
       return;
     }
 
@@ -1353,8 +1258,15 @@ client.on(Events.MessageCreate, async (message) => {
     // =========================
     if (message.content === `${PREFIX}setupall` || message.content === `${PREFIX}setup`) {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
+
       await setupAll(message.guild);
-      return message.reply("✅ ตั้งค่าระบบทั้งหมดให้แล้ว");
+
+      return message.reply(
+        [
+          "✅ สร้างระบบทั้งหมดเรียบร้อยแล้ว",
+          "หมวด, ห้อง, panel ร้านค้า, panel รับยศ, panel แอดมิน และ logs ถูกสร้างครบแล้ว",
+        ].join("\n")
+      );
     }
 
     if (message.content === `${PREFIX}refreshshop`) {
@@ -1367,16 +1279,14 @@ client.on(Events.MessageCreate, async (message) => {
     if (message.content === `${PREFIX}รับยศ`) {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
       await setupRolePanel(message.guild);
-      return message.reply("✅ สร้างห้องรับยศและแผงรับยศเรียบร้อยแล้ว");
+      return message.reply("✅ สร้างแผงรับยศแล้ว");
     }
 
     if (message.content.startsWith(`${PREFIX}setimage`)) {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
 
       const productId = message.content.split(" ")[1]?.trim();
-      if (!productId) {
-        return message.reply(`❌ ใช้แบบนี้: \`${PREFIX}setimage P001\` แล้วแนบรูป`);
-      }
+      if (!productId) return message.reply(`❌ ใช้แบบนี้: \`${PREFIX}setimage P001\` แล้วแนบรูป`);
 
       const attachment = message.attachments.first();
       if (!attachment) return message.reply("❌ กรุณาแนบรูป");
@@ -1399,7 +1309,7 @@ client.on(Events.MessageCreate, async (message) => {
 
       const lines = products.map(
         (p) =>
-          `**${p.id}** • ${p.name} • ${p.price} • ${safeCategory(p.category)} • ${p.active === false ? "ปิดขาย" : "เปิดขาย"} • stock:${Array.isArray(p.stocks) ? p.stocks.length : 0}`
+          `**${p.id}** • ${p.name} • ${p.price} • ${p.category || "ทั่วไป"} • ${p.active === false ? "ปิดขาย" : "เปิดขาย"} • stock:${Array.isArray(p.stocks) ? p.stocks.length : 0}`
       );
 
       return message.reply({
@@ -1416,9 +1326,7 @@ client.on(Events.MessageCreate, async (message) => {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
 
       const productId = message.content.split(" ")[1]?.trim();
-      if (!productId) {
-        return message.reply(`❌ ใช้แบบนี้: \`${PREFIX}viewproduct P001\``);
-      }
+      if (!productId) return message.reply(`❌ ใช้แบบนี้: \`${PREFIX}viewproduct P001\``);
 
       const products = loadProducts();
       const product = products.find((p) => p.id === productId);
@@ -1434,8 +1342,7 @@ client.on(Events.MessageCreate, async (message) => {
       if (!ordersList.length) return message.reply("ยังไม่มีออเดอร์");
 
       const lines = ordersList.map(
-        (o) =>
-          `**${o.id}** • user:${o.userId} • product:${o.productId} • status:${getOrderStatusText(o.status)}`
+        (o) => `**${o.id}** • user:${o.userId} • product:${o.productId} • status:${getOrderStatusText(o.status)}`
       );
 
       return message.reply({
@@ -1462,7 +1369,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.isButton()) {
       // ROLE TOGGLE
-      if (interaction.customId === "role_toggle") {
+      if (interaction.customId === ROLE_PANEL_BUTTON_ID) {
         const validation = await validateRoleSetup(interaction.guild);
         if (!validation.ok) {
           return interaction.reply({ content: validation.message, ephemeral: true });
@@ -1483,7 +1390,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
               new EmbedBuilder()
                 .setColor(COLORS.red)
                 .setTitle("✦ ถอดยศเรียบร้อย")
-                .setDescription(`ระบบได้เอายศ <@&${TARGET_ROLE_ID}> ออกจากคุณแล้ว`),
+                .setDescription(`ระบบได้เอายศ <@&${TARGET_ROLE_ID}> ออกจากคุณแล้ว`)
             ],
             ephemeral: true,
           });
@@ -1495,34 +1402,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
             new EmbedBuilder()
               .setColor(COLORS.green)
               .setTitle("✦ รับยศสำเร็จ")
-              .setDescription(`ระบบได้มอบยศ <@&${TARGET_ROLE_ID}> ให้คุณแล้ว`),
+              .setDescription(`ระบบได้มอบยศ <@&${TARGET_ROLE_ID}> ให้คุณแล้ว`)
           ],
           ephemeral: true,
         });
       }
 
       // STORE NAV
-      if (interaction.customId.startsWith("store_prev|") || interaction.customId.startsWith("store_next|")) {
-        const [, category, rawPage] = interaction.customId.split("|");
-        const currentPage = Number(rawPage) || 0;
+      if (interaction.customId.startsWith("store_prev_") || interaction.customId.startsWith("store_next_")) {
         const products = loadProducts();
-        const filtered = filterProductsByCategory(products, category);
-        const { pages } = paginateProducts(filtered, currentPage);
-        const nextPage = interaction.customId.startsWith("store_prev|")
-          ? Math.max(0, currentPage - 1)
-          : Math.min(pages.length - 1, currentPage + 1);
+        const pages = getProductPages(products);
+        const currentPage = Number(interaction.customId.split("_").pop()) || 0;
+        const nextPage =
+          interaction.customId.startsWith("store_prev_")
+            ? Math.max(0, currentPage - 1)
+            : Math.min(pages.length - 1, currentPage + 1);
 
         return interaction.update({
-          embeds: [buildStoreViewEmbed(interaction.guild, products, category, nextPage)],
-          components: buildStoreViewComponents(products, category, nextPage),
+          embeds: [buildProductSelectEmbed(interaction.guild, nextPage, pages.length, pages[nextPage])],
+          components: buildStoreComponents(products, nextPage),
         });
       }
 
       if (interaction.customId === "store_refresh") {
         const products = loadProducts();
+        const pages = getProductPages(products);
         return interaction.update({
-          embeds: [buildStoreViewEmbed(interaction.guild, products, "ทั้งหมด", 0)],
-          components: buildStoreViewComponents(products, "ทั้งหมด", 0),
+          embeds: [buildProductSelectEmbed(interaction.guild, 0, pages.length, pages[0])],
+          components: buildStoreComponents(products, 0),
         });
       }
 
@@ -1536,42 +1443,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setCustomId("modal_add_product")
           .setTitle("เพิ่มสินค้า");
 
-        const name = new TextInputBuilder()
-          .setCustomId("name")
-          .setLabel("ชื่อสินค้า")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-
-        const price = new TextInputBuilder()
-          .setCustomId("price")
-          .setLabel("ราคา")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-
-        const category = new TextInputBuilder()
-          .setCustomId("category")
-          .setLabel("หมวดสินค้า")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false);
-
-        const description = new TextInputBuilder()
-          .setCustomId("description")
-          .setLabel("รายละเอียดสินค้า")
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(true);
-
-        const delivery = new TextInputBuilder()
-          .setCustomId("delivery")
-          .setLabel("ตัวสินค้า / ข้อความหลังซื้อ")
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(false);
-
         modal.addComponents(
-          new ActionRowBuilder().addComponents(name),
-          new ActionRowBuilder().addComponents(price),
-          new ActionRowBuilder().addComponents(category),
-          new ActionRowBuilder().addComponents(description),
-          new ActionRowBuilder().addComponents(delivery)
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("name")
+              .setLabel("ชื่อสินค้า")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("price")
+              .setLabel("ราคา")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("category")
+              .setLabel("หมวดสินค้า")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(false)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("description")
+              .setLabel("รายละเอียดสินค้า")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("delivery")
+              .setLabel("ตัวสินค้า / ข้อความหลังซื้อ")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(false)
+          )
         );
 
         return interaction.showModal(modal);
@@ -1613,7 +1520,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // PRODUCT MANAGE BUTTONS
       if (interaction.customId.startsWith("manage_")) {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1662,7 +1568,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } else if (action === "category") {
           title = `แก้หมวดสินค้า ${productId}`;
           label = "หมวดใหม่";
-          value = safeCategory(product.category);
+          value = product.category || "";
         } else if (action === "desc") {
           title = `แก้รายละเอียด ${productId}`;
           label = "รายละเอียดใหม่";
@@ -1720,7 +1626,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                   `> **สินค้า:** ${product?.name || order.productId}`,
                   `> **ราคา:** ${product?.price || "-"}`,
                 ].join("\n")
-              ),
+              )
           ],
           ephemeral: true,
         });
@@ -1787,7 +1693,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const orderId = interaction.customId.replace("approve_", "");
         const order = findOrderById(orderId);
-
         if (!order) {
           return interaction.reply({ content: "❌ ไม่พบออเดอร์นี้แล้ว", ephemeral: true });
         }
@@ -1826,61 +1731,53 @@ client.on(Events.InteractionCreate, async (interaction) => {
           : null;
 
         if (ticketChannel) {
-          await ticketChannel
-            .send({
-              embeds: [
-                new EmbedBuilder()
-                  .setColor(COLORS.green)
-                  .setTitle("ชำระเงินสำเร็จ")
-                  .setDescription(
-                    [
-                      `${member}`,
-                      "",
-                      product ? `> **สินค้า:** ${product.name}` : null,
-                      `> **ยศที่ได้รับ:** <@&${PURCHASE_ROLE_ID}>`,
-                      "",
-                      "ทีมงานอนุมัติรายการของคุณเรียบร้อยแล้ว",
-                    ]
-                      .filter(Boolean)
-                      .join("\n")
-                  ),
-              ],
-              components: [buildTicketButtons(orderId, true)],
-            })
-            .catch(() => {});
+          await ticketChannel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(COLORS.green)
+                .setTitle("ชำระเงินสำเร็จ")
+                .setDescription(
+                  [
+                    `${member}`,
+                    "",
+                    product ? `> **สินค้า:** ${product.name}` : null,
+                    `> **ยศที่ได้รับ:** <@&${PURCHASE_ROLE_ID}>`,
+                    "",
+                    "ทีมงานอนุมัติรายการของคุณเรียบร้อยแล้ว",
+                  ]
+                    .filter(Boolean)
+                    .join("\n")
+                ),
+            ],
+            components: [buildTicketButtons(orderId, true)],
+          }).catch(() => {});
 
           for (const item of deliveries) {
             if (item.type === "stock") {
-              await ticketChannel
-                .send({
-                  embeds: [
-                    new EmbedBuilder()
-                      .setColor(COLORS.blue)
-                      .setTitle("✦ ตัวสินค้า (จากสต็อก)")
-                      .setDescription(String(item.value).slice(0, 4000)),
-                  ],
-                })
-                .catch(() => {});
+              await ticketChannel.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setColor(COLORS.blue)
+                    .setTitle("✦ ตัวสินค้า (จากสต็อก)")
+                    .setDescription(String(item.value).slice(0, 4000)),
+                ],
+              }).catch(() => {});
             }
 
             if (item.type === "text") {
-              await ticketChannel
-                .send({
-                  embeds: [
-                    new EmbedBuilder()
-                      .setColor(COLORS.blue)
-                      .setTitle("✦ รายละเอียดหลังซื้อ")
-                      .setDescription(String(item.value).slice(0, 4000)),
-                  ],
-                })
-                .catch(() => {});
+              await ticketChannel.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setColor(COLORS.blue)
+                    .setTitle("✦ รายละเอียดหลังซื้อ")
+                    .setDescription(String(item.value).slice(0, 4000)),
+                ],
+              }).catch(() => {});
             }
           }
 
           if (!deliveries.length) {
-            await ticketChannel
-              .send("ℹ️ สินค้านี้ยังไม่มีตัวสินค้าอัตโนมัติ กรุณารอทีมงาน")
-              .catch(() => {});
+            await ticketChannel.send("ℹ️ สินค้านี้ยังไม่มีตัวสินค้าอัตโนมัติ กรุณารอทีมงาน").catch(() => {});
           }
         }
 
@@ -1930,7 +1827,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const orderId = interaction.customId.replace("reject_", "");
         const order = findOrderById(orderId);
-
         if (!order) {
           return interaction.reply({ content: "❌ ไม่พบออเดอร์นี้แล้ว", ephemeral: true });
         }
@@ -1950,17 +1846,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
           : null;
 
         if (ticketChannel) {
-          await ticketChannel
-            .send({
-              embeds: [
-                new EmbedBuilder()
-                  .setColor(COLORS.red)
-                  .setTitle("สลิปยังไม่ผ่าน")
-                  .setDescription("กรุณาส่งสลิปใหม่อีกครั้งในห้องนี้"),
-              ],
-              components: [buildTicketButtons(orderId, false)],
-            })
-            .catch(() => {});
+          await ticketChannel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(COLORS.red)
+                .setTitle("สลิปยังไม่ผ่าน")
+                .setDescription("กรุณาส่งสลิปใหม่อีกครั้งในห้องนี้"),
+            ],
+            components: [buildTicketButtons(orderId, false)],
+          }).catch(() => {});
         }
 
         await sendLog(
@@ -1984,9 +1878,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         try {
           if (member) {
             await member.send(
-              `❌ การชำระเงินของคุณยังไม่ผ่านการตรวจสอบ${
-                product ? `\nสินค้า: ${product.name}` : ""
-              }\nกรุณาส่งสลิปใหม่อีกครั้ง`
+              `❌ การชำระเงินของคุณยังไม่ผ่านการตรวจสอบ${product ? `\nสินค้า: ${product.name}` : ""}\nกรุณาส่งสลิปใหม่อีกครั้ง`
             );
           }
         } catch {}
@@ -1999,30 +1891,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // =========================
-    // SELECT MENUS
-    // =========================
     if (interaction.isStringSelectMenu()) {
-      if (interaction.customId.startsWith("store_category|")) {
-        const products = loadProducts();
-        const selectedCategory = interaction.values[0];
-        return interaction.update({
-          embeds: [buildStoreViewEmbed(interaction.guild, products, selectedCategory, 0)],
-          components: buildStoreViewComponents(products, selectedCategory, 0),
-        });
-      }
-
-      if (interaction.customId.startsWith("store_product|")) {
-        const [, category] = interaction.customId.split("|");
+      if (interaction.customId.startsWith("store_select_")) {
         const productId = interaction.values[0];
-
         if (productId === "empty") {
           return interaction.reply({ content: "ยังไม่มีสินค้าในตอนนี้", ephemeral: true });
         }
 
         const products = loadProducts();
         const product = products.find((p) => p.id === productId && p.active !== false);
-
         if (!product) {
           return interaction.reply({ content: "❌ ไม่พบสินค้านี้แล้ว", ephemeral: true });
         }
@@ -2056,7 +1933,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const order = createOrder(interaction.user.id, product.id);
         const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-
         if (!member) {
           return interaction.reply({ content: "❌ ไม่พบข้อมูลสมาชิก", ephemeral: true });
         }
@@ -2075,7 +1951,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 `> **ลูกค้า:** ${member.user.tag}`,
                 `> **สินค้า:** ${product.name}`,
                 `> **ราคา:** ${product.price}`,
-                `> **หมวด:** ${safeCategory(product.category)}`,
                 `> **Ticket:** ${ticket}`,
               ].join("\n")
             )
@@ -2089,7 +1964,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 `> **เลขออเดอร์:** ${order.id}`,
                 `> **สินค้า:** ${product.name}`,
                 `> **ราคา:** ${product.price}`,
-                `> **หมวด:** ${safeCategory(product.category)}`,
                 "",
                 `ระบบเปิด ticket ส่วนตัวให้คุณแล้วที่ ${ticket}`,
               ].join("\n")
@@ -2123,9 +1997,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // =========================
-    // MODALS
-    // =========================
     if (interaction.isModalSubmit()) {
       if (!isAdmin(interaction.member)) {
         return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -2134,7 +2005,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.customId === "modal_add_product") {
         const name = interaction.fields.getTextInputValue("name").trim();
         const price = interaction.fields.getTextInputValue("price").trim();
-        const category = safeCategory(interaction.fields.getTextInputValue("category").trim());
+        const category = interaction.fields.getTextInputValue("category").trim();
         const description = interaction.fields.getTextInputValue("description").trim();
         const delivery = interaction.fields.getTextInputValue("delivery").trim();
 
@@ -2145,7 +2016,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           id,
           name,
           price,
-          category,
+          category: category || "ทั่วไป",
           description,
           deliveryText: delivery || "",
           stocks: [],
@@ -2167,9 +2038,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
                   `> **รหัสสินค้า:** ${id}`,
                   `> **ชื่อ:** ${name}`,
                   `> **ราคา:** ${price}`,
-                  `> **หมวด:** ${category}`,
+                  `> **หมวด:** ${category || "ทั่วไป"}`,
                   "",
-                  "ใช้คำสั่ง `!setimage Pxxx` แล้วแนบรูป เพื่อใส่รูปสินค้าได้",
+                  `ใช้ \`${PREFIX}setimage ${id}\` แล้วแนบรูป เพื่อใส่รูปสินค้า`,
                 ].join("\n")
               ),
           ],
@@ -2189,14 +2060,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         if (action === "name") products[index].name = value;
         if (action === "price") products[index].price = value;
-        if (action === "category") products[index].category = safeCategory(value);
+        if (action === "category") products[index].category = value || "ทั่วไป";
         if (action === "desc") products[index].description = value;
         if (action === "delivery") products[index].deliveryText = value;
         if (action === "stock") {
-          const items = value
-            .split("||")
-            .map((s) => s.trim())
-            .filter(Boolean);
+          const items = value.split("||").map((s) => s.trim()).filter(Boolean);
           if (!Array.isArray(products[index].stocks)) products[index].stocks = [];
           products[index].stocks.push(...items);
         }
@@ -2213,19 +2081,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
     console.error("Interaction error:", error);
 
     if (interaction.replied || interaction.deferred) {
-      await interaction
-        .followUp({
-          content: "❌ เกิดข้อผิดพลาดระหว่างจัดการคำสั่ง",
-          ephemeral: true,
-        })
-        .catch(() => {});
+      await interaction.followUp({
+        content: "❌ เกิดข้อผิดพลาดระหว่างจัดการคำสั่ง",
+        ephemeral: true,
+      }).catch(() => {});
     } else {
-      await interaction
-        .reply({
-          content: "❌ เกิดข้อผิดพลาดระหว่างจัดการคำสั่ง",
-          ephemeral: true,
-        })
-        .catch(() => {});
+      await interaction.reply({
+        content: "❌ เกิดข้อผิดพลาดระหว่างจัดการคำสั่ง",
+        ephemeral: true,
+      }).catch(() => {});
     }
   }
 });
@@ -2329,11 +2193,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
       desc: `${member.user.tag} ออกจากห้อง ${oldState.channel}`,
       color: COLORS.red,
     };
-  } else if (
-    oldState.channelId &&
-    newState.channelId &&
-    oldState.channelId !== newState.channelId
-  ) {
+  } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
     action = {
       title: "ย้ายห้องเสียง",
       desc: `${member.user.tag} ย้ายจาก ${oldState.channel} ไป ${newState.channel}`,
