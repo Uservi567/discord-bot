@@ -42,7 +42,7 @@ const TARGET_ROLE_ID = "1347851123364593753";
 const PURCHASE_ROLE_ID = TARGET_ROLE_ID;
 const ROLE_PANEL_BUTTON_ID = "toggle_role_1347851123364593753";
 
-// ใส่ role ทีมตรวจสลิปได้
+// ถ้ามี role ทีมตรวจสลิป ใส่ได้
 const STAFF_ALERT_ROLE_ID = "";
 const REVIEWER_ROLE_ID = "";
 
@@ -293,7 +293,6 @@ async function getOrCreateCategory(guild, name) {
   let category = guild.channels.cache.find(
     (ch) => ch.type === ChannelType.GuildCategory && ch.name === name
   );
-
   if (category) return category;
 
   category = await guild.channels.create({
@@ -890,7 +889,6 @@ async function createPrivateOrderTicket(guild, member, product, order) {
   if (existingChannel) return existingChannel;
 
   const category = await getCustomerCategory(guild);
-
   const safeName = sanitizeChannelName(member.user.username, member.id);
   const channelName = `🎫│${safeName}-${order.id.toLowerCase()}`;
 
@@ -965,11 +963,35 @@ function deliverProductContent(product) {
 
   if (Array.isArray(product.stocks) && product.stocks.length > 0) {
     const item = product.stocks.shift();
-    outputs.push({ type: "stock", value: item });
+
+    const parts = String(item)
+      .split("||")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    for (const part of parts) {
+      if (part.toLowerCase().startsWith("role:")) {
+        outputs.push({
+          type: "role",
+          value: part.replace(/^role:/i, "").trim(),
+          raw: part,
+        });
+      } else {
+        outputs.push({
+          type: "text",
+          value: part,
+          raw: part,
+        });
+      }
+    }
   }
 
   if (product.deliveryText) {
-    outputs.push({ type: "text", value: product.deliveryText });
+    outputs.push({
+      type: "text",
+      value: product.deliveryText,
+      raw: product.deliveryText,
+    });
   }
 
   return outputs;
@@ -1099,14 +1121,12 @@ async function setupStore(guild) {
 }
 
 async function setupAll(guild) {
-  const created = [];
-
-  await getOrCreateCategory(guild, STATUS_CATEGORY_NAME); created.push(STATUS_CATEGORY_NAME);
-  await getOrCreateCategory(guild, STORE_CATEGORY_NAME); created.push(STORE_CATEGORY_NAME);
-  await getOrCreateCategory(guild, CUSTOMER_CATEGORY_NAME); created.push(CUSTOMER_CATEGORY_NAME);
-  await getOrCreateCategory(guild, ROLE_CATEGORY_NAME); created.push(ROLE_CATEGORY_NAME);
-  await getOrCreateCategory(guild, LOG_CATEGORY_NAME); created.push(LOG_CATEGORY_NAME);
-  await getOrCreateCategory(guild, ADMIN_CATEGORY_NAME); created.push(ADMIN_CATEGORY_NAME);
+  await getOrCreateCategory(guild, STATUS_CATEGORY_NAME);
+  await getOrCreateCategory(guild, STORE_CATEGORY_NAME);
+  await getOrCreateCategory(guild, CUSTOMER_CATEGORY_NAME);
+  await getOrCreateCategory(guild, ROLE_CATEGORY_NAME);
+  await getOrCreateCategory(guild, LOG_CATEGORY_NAME);
+  await getOrCreateCategory(guild, ADMIN_CATEGORY_NAME);
 
   await ensureStatusChannels(guild);
   await updateServerStatusChannels(guild);
@@ -1114,8 +1134,6 @@ async function setupAll(guild) {
   await setupStore(guild);
   await setupRolePanel(guild);
   await setupAdminPanel(guild);
-
-  return created;
 }
 
 // =========================
@@ -1126,8 +1144,7 @@ client.once(Events.ClientReady, async (bot) => {
   ensureJsonFile(ORDERS_FILE);
   console.log(`✅ Logged in as ${bot.user.tag}`);
 
-  // รอบนี้ไม่ auto setup
-  // ป้องกันปัญหาลบห้องแล้วเด้งกลับเอง
+  // ไม่ auto setup
   setInterval(async () => {
     for (const guild of client.guilds.cache.values()) {
       await updateServerStatusChannels(guild).catch(() => {});
@@ -1146,9 +1163,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     const admin = isAdmin(message.member);
 
-    // =========================
     // TICKET SLIP LISTENER
-    // =========================
     const orders = loadOrders();
     const orderByChannel = orders.find(
       (o) => o.ticketChannelId === message.channel.id && isActiveOrderStatus(o.status)
@@ -1232,41 +1247,35 @@ client.on(Events.MessageCreate, async (message) => {
         ],
       }).catch(() => {});
 
-      const logEmbed = new EmbedBuilder()
-        .setColor(COLORS.yellow)
-        .setTitle("ลูกค้าส่งสลิป")
-        .setDescription(
-          [
-            `> **เลขออเดอร์:** ${updatedOrder.id}`,
-            `> **ลูกค้า:** ${message.author.tag}`,
-            `> **สินค้า:** ${product.name}`,
-            `> **ราคา:** ${product.price}`,
-            duplicate ? `> **หมายเหตุ:** สลิปซ้ำกับ ${duplicate.id}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n")
-        )
-        .setImage(attachment.url)
-        .setTimestamp();
+      await sendLog(
+        message.guild,
+        LOG_PAYMENT_NAME,
+        new EmbedBuilder()
+          .setColor(COLORS.yellow)
+          .setTitle("ลูกค้าส่งสลิป")
+          .setDescription(
+            [
+              `> **เลขออเดอร์:** ${updatedOrder.id}`,
+              `> **ลูกค้า:** ${message.author.tag}`,
+              `> **สินค้า:** ${product.name}`,
+              `> **ราคา:** ${product.price}`,
+              duplicate ? `> **หมายเหตุ:** สลิปซ้ำกับ ${duplicate.id}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          )
+          .setImage(attachment.url)
+          .setTimestamp()
+      );
 
-      await sendLog(message.guild, LOG_PAYMENT_NAME, logEmbed);
       return;
     }
 
-    // =========================
     // COMMANDS
-    // =========================
     if (message.content === `${PREFIX}setupall` || message.content === `${PREFIX}setup`) {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
-
       await setupAll(message.guild);
-
-      return message.reply(
-        [
-          "✅ สร้างระบบทั้งหมดเรียบร้อยแล้ว",
-          "หมวด, ห้อง, panel ร้านค้า, panel รับยศ, panel แอดมิน และ logs ถูกสร้างครบแล้ว",
-        ].join("\n")
-      );
+      return message.reply("✅ สร้างระบบทั้งหมดเรียบร้อยแล้ว");
     }
 
     if (message.content === `${PREFIX}refreshshop`) {
@@ -1368,7 +1377,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.guild) return;
 
     if (interaction.isButton()) {
-      // ROLE TOGGLE
       if (interaction.customId === ROLE_PANEL_BUTTON_ID) {
         const validation = await validateRoleSetup(interaction.guild);
         if (!validation.ok) {
@@ -1408,7 +1416,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // STORE NAV
       if (interaction.customId.startsWith("store_prev_") || interaction.customId.startsWith("store_next_")) {
         const products = loadProducts();
         const pages = getProductPages(products);
@@ -1433,7 +1440,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ADMIN PANEL
       if (interaction.customId === "admin_add_product") {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1581,7 +1587,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           value = product.deliveryText || "";
         } else if (action === "stock") {
           title = `เพิ่มสต็อก ${productId}`;
-          label = "คั่นแต่ละชิ้นด้วย ||";
+          label = "คั่นแต่ละชิ้นด้วย || เช่น role:123 || key:abc";
           style = TextInputStyle.Paragraph;
           value = "";
         }
@@ -1603,7 +1609,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.showModal(modal);
       }
 
-      // TICKET INFO
       if (interaction.customId.startsWith("ticket_info_")) {
         const orderId = interaction.customId.replace("ticket_info_", "");
         const order = findOrderById(orderId);
@@ -1632,7 +1637,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // TICKET CLOSE
       if (interaction.customId.startsWith("ticket_close_")) {
         const orderId = interaction.customId.replace("ticket_close_", "");
         const order = findOrderById(orderId);
@@ -1685,7 +1689,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      // APPROVE PAYMENT
       if (interaction.customId.startsWith("approve_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์อนุมัติรายการนี้", ephemeral: true });
@@ -1693,6 +1696,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const orderId = interaction.customId.replace("approve_", "");
         const order = findOrderById(orderId);
+
         if (!order) {
           return interaction.reply({ content: "❌ ไม่พบออเดอร์นี้แล้ว", ephemeral: true });
         }
@@ -1719,11 +1723,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
           saveProducts(products);
         }
 
+        const grantedRoles = [];
+        const failedRoles = [];
+        const textDeliveries = [];
+
+        for (const item of deliveries) {
+          if (item.type === "role") {
+            const roleId = String(item.value).trim();
+            const guildRole = await interaction.guild.roles.fetch(roleId).catch(() => null);
+
+            if (!guildRole) {
+              failedRoles.push(`ไม่พบ role ${roleId}`);
+              continue;
+            }
+
+            const botMember = interaction.guild.members.me;
+            if (!botMember || botMember.roles.highest.position <= guildRole.position) {
+              failedRoles.push(`ให้ role ${guildRole.name} ไม่ได้ เพราะ role บอทต่ำกว่า`);
+              continue;
+            }
+
+            await member.roles.add(guildRole, `Stock role delivery for order ${orderId}`).catch(() => null);
+            grantedRoles.push(guildRole);
+          } else {
+            textDeliveries.push(item.value);
+          }
+        }
+
         const updated = updateOrder(orderId, (old) => ({
           ...old,
           status: "approved",
           updatedAt: Date.now(),
           deliveredItems: deliveries,
+          grantedRoleIds: grantedRoles.map((r) => r.id),
         }));
 
         const ticketChannel = updated.ticketChannelId
@@ -1731,52 +1763,53 @@ client.on(Events.InteractionCreate, async (interaction) => {
           : null;
 
         if (ticketChannel) {
+          const deliveredEmbed = new EmbedBuilder()
+            .setColor(COLORS.green)
+            .setTitle("ชำระเงินสำเร็จ")
+            .setDescription(
+              [
+                `${member}`,
+                "",
+                product ? `> **สินค้า:** ${product.name}` : null,
+                `> **ยศหลักที่ได้รับ:** <@&${PURCHASE_ROLE_ID}>`,
+                grantedRoles.length
+                  ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}`
+                  : null,
+                "",
+                "ทีมงานอนุมัติรายการของคุณเรียบร้อยแล้ว",
+              ]
+                .filter(Boolean)
+                .join("\n")
+            );
+
           await ticketChannel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(COLORS.green)
-                .setTitle("ชำระเงินสำเร็จ")
-                .setDescription(
-                  [
-                    `${member}`,
-                    "",
-                    product ? `> **สินค้า:** ${product.name}` : null,
-                    `> **ยศที่ได้รับ:** <@&${PURCHASE_ROLE_ID}>`,
-                    "",
-                    "ทีมงานอนุมัติรายการของคุณเรียบร้อยแล้ว",
-                  ]
-                    .filter(Boolean)
-                    .join("\n")
-                ),
-            ],
+            embeds: [deliveredEmbed],
             components: [buildTicketButtons(orderId, true)],
           }).catch(() => {});
 
-          for (const item of deliveries) {
-            if (item.type === "stock") {
-              await ticketChannel.send({
-                embeds: [
-                  new EmbedBuilder()
-                    .setColor(COLORS.blue)
-                    .setTitle("✦ ตัวสินค้า (จากสต็อก)")
-                    .setDescription(String(item.value).slice(0, 4000)),
-                ],
-              }).catch(() => {});
-            }
-
-            if (item.type === "text") {
-              await ticketChannel.send({
-                embeds: [
-                  new EmbedBuilder()
-                    .setColor(COLORS.blue)
-                    .setTitle("✦ รายละเอียดหลังซื้อ")
-                    .setDescription(String(item.value).slice(0, 4000)),
-                ],
-              }).catch(() => {});
-            }
+          if (textDeliveries.length) {
+            await ticketChannel.send({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor(COLORS.blue)
+                  .setTitle("✦ ตัวสินค้า / รายละเอียดหลังซื้อ")
+                  .setDescription(textDeliveries.join("\n").slice(0, 4000)),
+              ],
+            }).catch(() => {});
           }
 
-          if (!deliveries.length) {
+          if (failedRoles.length) {
+            await ticketChannel.send({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor(COLORS.orange)
+                  .setTitle("⚠ มีบาง role ที่แจกไม่สำเร็จ")
+                  .setDescription(failedRoles.join("\n").slice(0, 4000)),
+              ],
+            }).catch(() => {});
+          }
+
+          if (!textDeliveries.length && !grantedRoles.length) {
             await ticketChannel.send("ℹ️ สินค้านี้ยังไม่มีตัวสินค้าอัตโนมัติ กรุณารอทีมงาน").catch(() => {});
           }
         }
@@ -1792,8 +1825,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 `> **เลขออเดอร์:** ${updated.id}`,
                 `> **ลูกค้า:** ${member.user.tag}`,
                 product ? `> **สินค้า:** ${product.name}` : null,
-                `> **ยศที่ให้:** <@&${PURCHASE_ROLE_ID}>`,
-                deliveries.length ? `> **มีการส่งตัวสินค้า:** ใช่` : `> **มีการส่งตัวสินค้า:** ไม่`,
+                `> **ยศหลัก:** <@&${PURCHASE_ROLE_ID}>`,
+                grantedRoles.length
+                  ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}`
+                  : null,
+                textDeliveries.length ? `> **มีข้อความจัดส่ง:** ใช่` : null,
+                failedRoles.length ? `> **role ที่แจกไม่สำเร็จ:** ${failedRoles.length}` : null,
               ]
                 .filter(Boolean)
                 .join("\n")
@@ -1805,8 +1842,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const dmLines = [
             "✅ การชำระเงินของคุณได้รับการอนุมัติแล้ว",
             product ? `สินค้า: ${product.name}` : null,
-            deliveries.length ? "\nตัวสินค้า / รายละเอียด:" : null,
-            ...deliveries.map((d) => `- ${d.value}`),
+            `ยศหลักที่ได้รับ: <@&${PURCHASE_ROLE_ID}>`,
+            grantedRoles.length ? `ยศจาก stock: ${grantedRoles.map((r) => r.name).join(", ")}` : null,
+            textDeliveries.length ? "\nตัวสินค้า / รายละเอียด:" : null,
+            ...textDeliveries.map((d) => `- ${d}`),
+            failedRoles.length ? `\nหมายเหตุ: มีบาง role ที่ระบบแจกไม่สำเร็จ กรุณาติดต่อแอดมิน` : null,
           ].filter(Boolean);
 
           await member.send(dmLines.join("\n"));
@@ -1819,7 +1859,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // REJECT PAYMENT
       if (interaction.customId.startsWith("reject_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์ปฏิเสธรายการนี้", ephemeral: true });
