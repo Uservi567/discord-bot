@@ -31,9 +31,9 @@ const client = new Client({
   ],
 });
 
-// =========================
+// ==================================================
 // CONFIG
-// =========================
+// ==================================================
 const TOKEN = process.env.TOKEN;
 const PREFIX = "!";
 
@@ -41,19 +41,19 @@ const PREFIX = "!";
 const TARGET_ROLE_ID = "1347851123364593753";
 
 // ยศหลักจากการซื้อ
-// ถ้าไม่ต้องการให้ยศหลักตอนซื้อ ให้ปล่อยเป็น ""
+// ถ้าไม่ต้องการให้ role หลักตอนซื้อ ให้ปล่อยเป็น ""
 const PURCHASE_ROLE_ID = "";
 
-// ปุ่มรับยศ
-const ROLE_PANEL_BUTTON_ID = "toggle_role_1347851123364593753";
-
 // ทีมงาน
-const STAFF_ALERT_ROLE_ID = "";
-const REVIEWER_ROLE_ID = "";
+const STAFF_ALERT_ROLE_ID = ""; // role mention ตอนมีสลิปใหม่
+const REVIEWER_ROLE_ID = ""; // role ที่มีสิทธิ์กดอนุมัติ/ปฏิเสธ
 
 // รูป
 const ROLE_PANEL_GIF = "https://i.postimg.cc/BvgsywmH/snaptik-7505147525616176389-hd.gif";
 const SHOP_BANNER = "";
+
+// IDs ปุ่ม
+const ROLE_PANEL_BUTTON_ID = "toggle_role_main";
 
 // สี
 const COLORS = {
@@ -83,9 +83,7 @@ const STATUS_BOT_NAME = "🤖 บอท";
 const SHOP_CHANNEL_NAME = "🏪│หน้าร้าน";
 const PRODUCTS_CHANNEL_NAME = "📦│เลือกสินค้า";
 const VERIFY_CHANNEL_NAME = "🔍│ตรวจสลิป";
-
 const ROLE_CHANNEL_NAME = "🎭│รับยศ";
-
 const ADMIN_PANEL_CHANNEL_NAME = "🛠│product-control";
 
 const LOG_JOIN_LEAVE_NAME = "📝│member-logs";
@@ -102,13 +100,12 @@ const ORDERS_FILE = path.join(__dirname, "orders.json");
 const STATUS_UPDATE_INTERVAL = 60 * 1000;
 const PRODUCTS_PER_PAGE = 10;
 const TRANSCRIPT_MESSAGE_LIMIT = 300;
-
 const TICKET_WARN_AFTER_MS = 30 * 60 * 1000;
 const TICKET_CLOSE_AFTER_MS = 2 * 60 * 60 * 1000;
 
-// =========================
+// ==================================================
 // FILE HELPERS
-// =========================
+// ==================================================
 function ensureJsonFile(filePath) {
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, "[]", "utf8");
@@ -165,9 +162,9 @@ function generateOrderId(orders) {
   return `O${String(next).padStart(3, "0")}`;
 }
 
-// =========================
+// ==================================================
 // TEXT / STATUS HELPERS
-// =========================
+// ==================================================
 function getOrderStatusText(status) {
   const map = {
     pending: "เริ่มคำสั่งซื้อ",
@@ -188,19 +185,19 @@ function isActiveOrderStatus(status) {
 
 function isAdmin(member) {
   return (
-    member.permissions.has(PermissionsBitField.Flags.Administrator) ||
-    member.permissions.has(PermissionsBitField.Flags.ManageChannels)
+    member?.permissions?.has(PermissionsBitField.Flags.Administrator) ||
+    member?.permissions?.has(PermissionsBitField.Flags.ManageChannels)
   );
 }
 
 function canReviewPayments(member) {
   if (isAdmin(member)) return true;
-  if (REVIEWER_ROLE_ID && member.roles?.cache?.has(REVIEWER_ROLE_ID)) return true;
+  if (REVIEWER_ROLE_ID && member?.roles?.cache?.has(REVIEWER_ROLE_ID)) return true;
   return false;
 }
 
 function sanitizeChannelName(text, fallback = "ticket") {
-  return String(text)
+  return String(text || "")
     .toLowerCase()
     .replace(/[^a-z0-9ก-๙-]/gi, "-")
     .replace(/-+/g, "-")
@@ -208,9 +205,14 @@ function sanitizeChannelName(text, fallback = "ticket") {
     .slice(0, 24) || fallback;
 }
 
-// =========================
+function normalizeBooleanText(text) {
+  const value = String(text).trim().toLowerCase();
+  return ["true", "on", "yes", "1", "เปิด", "แสดง", "active"].includes(value);
+}
+
+// ==================================================
 // ROLE HELPERS
-// =========================
+// ==================================================
 async function validateRoleSetup(guild, roleId) {
   const role = await guild.roles.fetch(roleId).catch(() => null);
   if (!role) {
@@ -244,13 +246,18 @@ async function safelyGiveRole(guild, member, roleId, reason = "Role delivery") {
     return { ok: false, message: `ให้ role ${guildRole.name} ไม่ได้ เพราะ role บอทต่ำกว่า` };
   }
 
-  await member.roles.add(guildRole, reason).catch(() => null);
-  return { ok: true, role: guildRole };
+  try {
+    await member.roles.add(guildRole, reason);
+    return { ok: true, role: guildRole };
+  } catch (error) {
+    console.error("safelyGiveRole error:", error);
+    return { ok: false, message: `ให้ role ${guildRole.name} ไม่สำเร็จ` };
+  }
 }
 
-// =========================
+// ==================================================
 // PERMISSION HELPERS
-// =========================
+// ==================================================
 function buildAdminOnlyOverwrites(guild) {
   const overwrites = [
     {
@@ -310,9 +317,9 @@ function buildReadOnlyPublicOverwrites(guild) {
   ];
 }
 
-// =========================
+// ==================================================
 // CATEGORY / CHANNEL HELPERS
-// =========================
+// ==================================================
 async function getOrCreateCategory(guild, name) {
   let category = guild.channels.cache.find(
     (ch) => ch.type === ChannelType.GuildCategory && ch.name === name
@@ -325,7 +332,13 @@ async function getOrCreateCategory(guild, name) {
   });
 }
 
-async function getOrCreateTextChannel(guild, categoryName, channelName, topic = "", permissionOverwrites = null) {
+async function getOrCreateTextChannel(
+  guild,
+  categoryName,
+  channelName,
+  topic = "",
+  permissionOverwrites = null
+) {
   const category = await getOrCreateCategory(guild, categoryName);
 
   let channel = guild.channels.cache.find(
@@ -434,9 +447,9 @@ async function sendLog(guild, channelName, embed, files = []) {
   await channel.send({ embeds: [embed], files }).catch(() => {});
 }
 
-// =========================
+// ==================================================
 // STATUS SYSTEM
-// =========================
+// ==================================================
 async function ensureStatusChannels(guild) {
   await getOrCreateVoiceChannel(guild, STATUS_CATEGORY_NAME, STATUS_TOTAL_NAME);
   await getOrCreateVoiceChannel(guild, STATUS_CATEGORY_NAME, STATUS_ONLINE_NAME);
@@ -470,9 +483,9 @@ async function updateServerStatusChannels(guild) {
   }
 }
 
-// =========================
+// ==================================================
 // ROLE PANEL
-// =========================
+// ==================================================
 function buildRolePanelEmbed(guild) {
   return new EmbedBuilder()
     .setColor(COLORS.dark)
@@ -528,9 +541,9 @@ async function setupRolePanel(guild) {
   });
 }
 
-// =========================
+// ==================================================
 // SHOP UI
-// =========================
+// ==================================================
 function buildShopHeaderEmbed(guild) {
   const embed = new EmbedBuilder()
     .setColor(COLORS.shop)
@@ -764,10 +777,9 @@ async function renderShopPanel(guild) {
 
   const pages = getProductPages(products);
   const firstPageItems = pages[0];
-  const embed = buildProductSelectEmbed(guild, 0, pages.length, firstPageItems);
 
   await productsChannel.send({
-    embeds: [embed],
+    embeds: [buildProductSelectEmbed(guild, 0, pages.length, firstPageItems)],
     components: buildStoreComponents(products, 0),
   });
 }
@@ -781,9 +793,9 @@ async function setupAdminPanel(guild) {
   });
 }
 
-// =========================
+// ==================================================
 // ORDER / DELIVERY HELPERS
-// =========================
+// ==================================================
 function findOpenOrderByUser(userId) {
   const orders = loadOrders();
   return orders.find((o) => o.userId === userId && isActiveOrderStatus(o.status));
@@ -937,6 +949,13 @@ function getDuplicateSlipWarning(currentOrderId, slipUrl) {
   return orders.find((o) => o.id !== currentOrderId && o.slipUrl && o.slipUrl === slipUrl) || null;
 }
 
+/*
+stock 1 ชิ้น = 1 แพ็ก
+เช่น:
+role:111||ลิงก์ VIP: https://abc.com
+
+และ "เพิ่มสต็อก" 1 ครั้ง = เพิ่ม 1 stock item
+*/
 function deliverProductContent(product) {
   const outputs = [];
 
@@ -989,6 +1008,7 @@ async function createTranscriptAttachment(channel) {
       const attachments = m.attachments.size
         ? `<div class="attach">${[...m.attachments.values()].map((a) => `<a href="${a.url}">${a.url}</a>`).join("<br>")}</div>`
         : "";
+
       return `
         <div class="msg">
           <div class="meta">${time} • ${author}</div>
@@ -1081,9 +1101,9 @@ async function checkTicketTimeouts() {
   }
 }
 
-// =========================
+// ==================================================
 // SETUP
-// =========================
+// ==================================================
 async function setupLogs(guild) {
   await getLogChannel(guild, LOG_JOIN_LEAVE_NAME, "บันทึกสมาชิกเข้าออก");
   await getLogChannel(guild, LOG_MESSAGE_NAME, "บันทึกข้อความที่ลบหรือแก้ไข");
@@ -1115,9 +1135,9 @@ async function setupAll(guild) {
   await setupAdminPanel(guild);
 }
 
-// =========================
+// ==================================================
 // READY
-// =========================
+// ==================================================
 client.once(Events.ClientReady, async (bot) => {
   ensureJsonFile(PRODUCTS_FILE);
   ensureJsonFile(ORDERS_FILE);
@@ -1132,9 +1152,9 @@ client.once(Events.ClientReady, async (bot) => {
   }, STATUS_UPDATE_INTERVAL);
 });
 
-// =========================
+// ==================================================
 // MESSAGE COMMANDS
-// =========================
+// ==================================================
 client.on(Events.MessageCreate, async (message) => {
   try {
     if (!message.guild) return;
@@ -1341,15 +1361,14 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// =========================
+// ==================================================
 // INTERACTION HANDLERS
-// =========================
+// ==================================================
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.guild) return;
 
     if (interaction.isButton()) {
-      // ปุ่มรับยศ
       if (interaction.customId === ROLE_PANEL_BUTTON_ID) {
         const validation = await validateRoleSetup(interaction.guild, TARGET_ROLE_ID);
         if (!validation.ok) {
@@ -1389,7 +1408,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ร้านค้าเปลี่ยนหน้า
       if (interaction.customId.startsWith("store_prev_") || interaction.customId.startsWith("store_next_")) {
         const products = loadProducts();
         const pages = getProductPages(products);
@@ -1413,7 +1431,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // แผงแอดมิน
       if (interaction.customId === "admin_add_product") {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1480,7 +1497,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ปุ่มจัดการสินค้า
       if (interaction.customId.startsWith("manage_")) {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1542,7 +1558,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           value = product.deliveryText || "";
         } else if (action === "stock") {
           title = `เพิ่มสต็อก ${productId}`;
-          label = "คั่นแต่ละชิ้นด้วย || เช่น role:123 || key:abc";
+          label = "1 ครั้ง = 1 stock item เช่น role:123||link:abc";
           style = TextInputStyle.Paragraph;
           value = "";
         }
@@ -1564,7 +1580,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.showModal(modal);
       }
 
-      // ปุ่มข้อมูลออเดอร์
       if (interaction.customId.startsWith("ticket_info_")) {
         const orderId = interaction.customId.replace("ticket_info_", "");
         const order = findOrderById(orderId);
@@ -1593,7 +1608,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ปุ่มปิด ticket
       if (interaction.customId.startsWith("ticket_close_")) {
         const orderId = interaction.customId.replace("ticket_close_", "");
         const order = findOrderById(orderId);
@@ -1646,7 +1660,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      // ปุ่มอนุมัติสลิป
       if (interaction.customId.startsWith("approve_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์อนุมัติรายการนี้", ephemeral: true });
@@ -1824,7 +1837,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ปุ่มปฏิเสธ
       if (interaction.customId.startsWith("reject_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์ปฏิเสธรายการนี้", ephemeral: true });
@@ -2069,9 +2081,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (action === "desc") products[index].description = value;
         if (action === "delivery") products[index].deliveryText = value;
         if (action === "stock") {
-          const items = value.split("||").map((s) => s.trim()).filter(Boolean);
-          if (!Array.isArray(products[index].stocks)) products[index].stocks = [];
-          products[index].stocks.push(...items);
+          if (!Array.isArray(products[index].stocks)) {
+            products[index].stocks = [];
+          }
+          // 1 ครั้ง = 1 stock item
+          products[index].stocks.push(value);
         }
 
         saveProducts(products);
@@ -2099,9 +2113,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// =========================
+// ==================================================
 // LOG EVENTS
-// =========================
+// ==================================================
 client.on(Events.GuildMemberAdd, async (member) => {
   await updateServerStatusChannels(member.guild);
 
@@ -2248,9 +2262,9 @@ client.on(Events.PresenceUpdate, async (_, newPresence) => {
   await updateServerStatusChannels(newPresence.guild);
 });
 
-// =========================
+// ==================================================
 // LOGIN
-// =========================
+// ==================================================
 if (!TOKEN) {
   console.error("❌ ไม่พบ TOKEN ในไฟล์ .env");
   process.exit(1);
