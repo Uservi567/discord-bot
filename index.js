@@ -20,6 +20,9 @@ const {
   TextInputStyle,
 } = require("discord.js");
 
+// ==================================================
+// CLIENT
+// ==================================================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -41,19 +44,19 @@ const PREFIX = "!";
 const TARGET_ROLE_ID = "1347851123364593753";
 
 // ยศหลักจากการซื้อ
-// ถ้าไม่ต้องการให้ role หลักตอนซื้อ ให้ปล่อยเป็น ""
+// ถ้าไม่ต้องการให้ role หลักตอนซื้อ ปล่อยเป็นค่าว่าง
 const PURCHASE_ROLE_ID = "";
 
 // ทีมงาน
-const STAFF_ALERT_ROLE_ID = ""; // role mention ตอนมีสลิปใหม่
-const REVIEWER_ROLE_ID = ""; // role ที่มีสิทธิ์กดอนุมัติ/ปฏิเสธ
+const STAFF_ALERT_ROLE_ID = "";
+const REVIEWER_ROLE_ID = "";
 
 // รูป
 const ROLE_PANEL_GIF = "https://i.postimg.cc/BvgsywmH/snaptik-7505147525616176389-hd.gif";
 const SHOP_BANNER = "";
 
-// IDs ปุ่ม
-const ROLE_PANEL_BUTTON_ID = "toggle_role_main";
+// ปุ่ม
+const ROLE_PANEL_BUTTON_ID = "toggle_self_role";
 
 // สี
 const COLORS = {
@@ -163,7 +166,7 @@ function generateOrderId(orders) {
 }
 
 // ==================================================
-// TEXT / STATUS HELPERS
+// GENERAL HELPERS
 // ==================================================
 function getOrderStatusText(status) {
   const map = {
@@ -203,11 +206,6 @@ function sanitizeChannelName(text, fallback = "ticket") {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 24) || fallback;
-}
-
-function normalizeBooleanText(text) {
-  const value = String(text).trim().toLowerCase();
-  return ["true", "on", "yes", "1", "เปิด", "แสดง", "active"].includes(value);
 }
 
 // ==================================================
@@ -256,7 +254,7 @@ async function safelyGiveRole(guild, member, roleId, reason = "Role delivery") {
 }
 
 // ==================================================
-// PERMISSION HELPERS
+// PERMISSIONS / CHANNEL HELPERS
 // ==================================================
 function buildAdminOnlyOverwrites(guild) {
   const overwrites = [
@@ -317,9 +315,6 @@ function buildReadOnlyPublicOverwrites(guild) {
   ];
 }
 
-// ==================================================
-// CATEGORY / CHANNEL HELPERS
-// ==================================================
 async function getOrCreateCategory(guild, name) {
   let category = guild.channels.cache.find(
     (ch) => ch.type === ChannelType.GuildCategory && ch.name === name
@@ -448,7 +443,7 @@ async function sendLog(guild, channelName, embed, files = []) {
 }
 
 // ==================================================
-// STATUS SYSTEM
+// STATUS
 // ==================================================
 async function ensureStatusChannels(guild) {
   await getOrCreateVoiceChannel(guild, STATUS_CATEGORY_NAME, STATUS_TOTAL_NAME);
@@ -641,21 +636,9 @@ function buildAdminPanelEmbed(guild) {
 function buildAdminPanelButtons() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("admin_add_product")
-        .setLabel("เพิ่มสินค้า")
-        .setEmoji("➕")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId("admin_manage_product")
-        .setLabel("จัดการสินค้า")
-        .setEmoji("🧩")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("admin_refresh_shop")
-        .setLabel("รีเฟรชร้าน")
-        .setEmoji("🔄")
-        .setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId("admin_add_product").setLabel("เพิ่มสินค้า").setEmoji("➕").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("admin_manage_product").setLabel("จัดการสินค้า").setEmoji("🧩").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("admin_refresh_shop").setLabel("รีเฟรชร้าน").setEmoji("🔄").setStyle(ButtonStyle.Secondary)
     ),
   ];
 }
@@ -726,20 +709,9 @@ function buildStoreComponents(products, page = 0) {
   const row1 = new ActionRowBuilder().addComponents(select);
 
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`store_prev_${page}`)
-      .setLabel("ก่อนหน้า")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page <= 0),
-    new ButtonBuilder()
-      .setCustomId(`store_next_${page}`)
-      .setLabel("ถัดไป")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= pages.length - 1),
-    new ButtonBuilder()
-      .setCustomId("store_refresh")
-      .setLabel("รีเฟรช")
-      .setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(`store_prev_${page}`).setLabel("ก่อนหน้า").setStyle(ButtonStyle.Secondary).setDisabled(page <= 0),
+    new ButtonBuilder().setCustomId(`store_next_${page}`).setLabel("ถัดไป").setStyle(ButtonStyle.Secondary).setDisabled(page >= pages.length - 1),
+    new ButtonBuilder().setCustomId("store_refresh").setLabel("รีเฟรช").setStyle(ButtonStyle.Primary)
   );
 
   return [row1, row2];
@@ -794,7 +766,7 @@ async function setupAdminPanel(guild) {
 }
 
 // ==================================================
-// ORDER / DELIVERY HELPERS
+// ORDER / DELIVERY
 // ==================================================
 function findOpenOrderByUser(userId) {
   const orders = loadOrders();
@@ -949,13 +921,7 @@ function getDuplicateSlipWarning(currentOrderId, slipUrl) {
   return orders.find((o) => o.id !== currentOrderId && o.slipUrl && o.slipUrl === slipUrl) || null;
 }
 
-/*
-stock 1 ชิ้น = 1 แพ็ก
-เช่น:
-role:111||ลิงก์ VIP: https://abc.com
-
-และ "เพิ่มสต็อก" 1 ครั้ง = เพิ่ม 1 stock item
-*/
+// stock 1 ชิ้น = 1 แพ็ก เช่น role:111||link:abc
 function deliverProductContent(product) {
   const outputs = [];
 
@@ -1102,6 +1068,85 @@ async function checkTicketTimeouts() {
 }
 
 // ==================================================
+// DIAGNOSTIC
+// ==================================================
+async function checkSystem(guild) {
+  const results = [];
+
+  const push = (ok, label, detail = "") => {
+    results.push({ ok, label, detail });
+  };
+
+  // files
+  try {
+    ensureJsonFile(PRODUCTS_FILE);
+    const products = loadProducts();
+    push(Array.isArray(products), "products.json", Array.isArray(products) ? "อ่านได้" : "อ่านไม่ได้");
+  } catch {
+    push(false, "products.json", "อ่านไม่ได้");
+  }
+
+  try {
+    ensureJsonFile(ORDERS_FILE);
+    const orders = loadOrders();
+    push(Array.isArray(orders), "orders.json", Array.isArray(orders) ? "อ่านได้" : "อ่านไม่ได้");
+  } catch {
+    push(false, "orders.json", "อ่านไม่ได้");
+  }
+
+  // bot perms
+  const me = guild.members.me;
+  push(!!me, "พบตัวบอทในเซิร์ฟ", me ? me.user.tag : "ไม่พบ");
+
+  if (me) {
+    push(me.permissions.has(PermissionsBitField.Flags.ManageChannels), "Manage Channels", me.permissions.has(PermissionsBitField.Flags.ManageChannels) ? "มี" : "ไม่มี");
+    push(me.permissions.has(PermissionsBitField.Flags.ManageRoles), "Manage Roles", me.permissions.has(PermissionsBitField.Flags.ManageRoles) ? "มี" : "ไม่มี");
+    push(me.permissions.has(PermissionsBitField.Flags.SendMessages), "Send Messages", me.permissions.has(PermissionsBitField.Flags.SendMessages) ? "มี" : "ไม่มี");
+    push(me.permissions.has(PermissionsBitField.Flags.EmbedLinks), "Embed Links", me.permissions.has(PermissionsBitField.Flags.EmbedLinks) ? "มี" : "ไม่มี");
+    push(me.permissions.has(PermissionsBitField.Flags.AttachFiles), "Attach Files", me.permissions.has(PermissionsBitField.Flags.AttachFiles) ? "มี" : "ไม่มี");
+  }
+
+  // target role
+  const targetRole = await guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
+  push(!!targetRole, "TARGET_ROLE_ID", targetRole ? targetRole.name : "ไม่พบ");
+
+  if (targetRole && me) {
+    push(
+      me.roles.highest.position > targetRole.position,
+      "ลำดับ role บอท > role รับยศ",
+      me.roles.highest.position > targetRole.position ? "ถูกต้อง" : "บอทต่ำกว่า"
+    );
+  }
+
+  if (PURCHASE_ROLE_ID) {
+    const purchaseRole = await guild.roles.fetch(PURCHASE_ROLE_ID).catch(() => null);
+    push(!!purchaseRole, "PURCHASE_ROLE_ID", purchaseRole ? purchaseRole.name : "ไม่พบ");
+    if (purchaseRole && me) {
+      push(
+        me.roles.highest.position > purchaseRole.position,
+        "ลำดับ role บอท > role หลักตอนซื้อ",
+        me.roles.highest.position > purchaseRole.position ? "ถูกต้อง" : "บอทต่ำกว่า"
+      );
+    }
+  } else {
+    push(true, "PURCHASE_ROLE_ID", "ปิดการใช้งาน");
+  }
+
+  // channels
+  const roleCh = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === ROLE_CHANNEL_NAME);
+  const productCh = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === PRODUCTS_CHANNEL_NAME);
+  const verifyCh = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === VERIFY_CHANNEL_NAME);
+  const adminCh = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === ADMIN_PANEL_CHANNEL_NAME);
+
+  push(!!roleCh, ROLE_CHANNEL_NAME, roleCh ? "พบ" : "ไม่พบ");
+  push(!!productCh, PRODUCTS_CHANNEL_NAME, productCh ? "พบ" : "ไม่พบ");
+  push(!!verifyCh, VERIFY_CHANNEL_NAME, verifyCh ? "พบ" : "ไม่พบ");
+  push(!!adminCh, ADMIN_PANEL_CHANNEL_NAME, adminCh ? "พบ" : "ไม่พบ");
+
+  return results;
+}
+
+// ==================================================
 // SETUP
 // ==================================================
 async function setupLogs(guild) {
@@ -1120,19 +1165,23 @@ async function setupStore(guild) {
 }
 
 async function setupAll(guild) {
-  await getOrCreateCategory(guild, STATUS_CATEGORY_NAME);
-  await getOrCreateCategory(guild, STORE_CATEGORY_NAME);
-  await getOrCreateCategory(guild, CUSTOMER_CATEGORY_NAME);
-  await getOrCreateCategory(guild, ROLE_CATEGORY_NAME);
-  await getOrCreateCategory(guild, LOG_CATEGORY_NAME);
-  await getOrCreateCategory(guild, ADMIN_CATEGORY_NAME);
+  const done = [];
 
-  await ensureStatusChannels(guild);
-  await updateServerStatusChannels(guild);
-  await setupLogs(guild);
-  await setupStore(guild);
-  await setupRolePanel(guild);
-  await setupAdminPanel(guild);
+  await getOrCreateCategory(guild, STATUS_CATEGORY_NAME); done.push(STATUS_CATEGORY_NAME);
+  await getOrCreateCategory(guild, STORE_CATEGORY_NAME); done.push(STORE_CATEGORY_NAME);
+  await getOrCreateCategory(guild, CUSTOMER_CATEGORY_NAME); done.push(CUSTOMER_CATEGORY_NAME);
+  await getOrCreateCategory(guild, ROLE_CATEGORY_NAME); done.push(ROLE_CATEGORY_NAME);
+  await getOrCreateCategory(guild, LOG_CATEGORY_NAME); done.push(LOG_CATEGORY_NAME);
+  await getOrCreateCategory(guild, ADMIN_CATEGORY_NAME); done.push(ADMIN_CATEGORY_NAME);
+
+  await ensureStatusChannels(guild); done.push("status-channels");
+  await updateServerStatusChannels(guild); done.push("status-update");
+  await setupLogs(guild); done.push("logs");
+  await setupStore(guild); done.push("store");
+  await setupRolePanel(guild); done.push("role-panel");
+  await setupAdminPanel(guild); done.push("admin-panel");
+
+  return done;
 }
 
 // ==================================================
@@ -1266,8 +1315,14 @@ client.on(Events.MessageCreate, async (message) => {
 
     if (message.content === `${PREFIX}setupall` || message.content === `${PREFIX}setup`) {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
-      await setupAll(message.guild);
-      return message.reply("✅ สร้างระบบทั้งหมดเรียบร้อยแล้ว");
+
+      const done = await setupAll(message.guild);
+      return message.reply(
+        [
+          "✅ สร้างระบบทั้งหมดเรียบร้อยแล้ว",
+          `สำเร็จ: ${done.join(", ")}`
+        ].join("\n")
+      );
     }
 
     if (message.content === `${PREFIX}refreshshop`) {
@@ -1277,10 +1332,38 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply("✅ รีเฟรชหน้าร้านและแผงแอดมินแล้ว");
     }
 
+    if (message.content === `${PREFIX}fixpanels`) {
+      if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
+      await setupRolePanel(message.guild);
+      await renderShopPanel(message.guild);
+      await setupAdminPanel(message.guild);
+      return message.reply("✅ ซ่อม panel หลักให้แล้ว");
+    }
+
     if (message.content === `${PREFIX}รับยศ`) {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
       await setupRolePanel(message.guild);
       return message.reply("✅ สร้างแผงรับยศแล้ว");
+    }
+
+    if (message.content === `${PREFIX}checksystem`) {
+      if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
+
+      const results = await checkSystem(message.guild);
+      const okCount = results.filter((r) => r.ok).length;
+
+      const lines = results.map(
+        (r) => `${r.ok ? "✅" : "❌"} ${r.label}${r.detail ? ` — ${r.detail}` : ""}`
+      );
+
+      return message.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(okCount === results.length ? COLORS.green : COLORS.yellow)
+            .setTitle("System Check")
+            .setDescription(lines.join("\n").slice(0, 4000)),
+        ],
+      });
     }
 
     if (message.content.startsWith(`${PREFIX}setimage`)) {
@@ -1336,6 +1419,51 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply({ embeds: [buildProductDetailsEmbed(message.guild, product)] });
     }
 
+    if (message.content.startsWith(`${PREFIX}stockinfo`)) {
+      if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
+
+      const productId = message.content.split(" ")[1]?.trim();
+      if (!productId) return message.reply(`❌ ใช้แบบนี้: \`${PREFIX}stockinfo P001\``);
+
+      const products = loadProducts();
+      const product = products.find((p) => p.id === productId);
+      if (!product) return message.reply("❌ ไม่พบสินค้า");
+
+      const stocks = Array.isArray(product.stocks) ? product.stocks : [];
+      const preview = stocks.slice(0, 5).map((s, i) => `#${i + 1} ${String(s).slice(0, 300)}`);
+
+      return message.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(COLORS.blue)
+            .setTitle(`Stock Info • ${product.name}`)
+            .setDescription(
+              [
+                `> จำนวน stock: ${stocks.length}`,
+                "",
+                preview.length ? preview.join("\n\n") : "ยังไม่มี stock",
+              ].join("\n")
+            ),
+        ],
+      });
+    }
+
+    if (message.content.startsWith(`${PREFIX}clearstock`)) {
+      if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
+
+      const productId = message.content.split(" ")[1]?.trim();
+      if (!productId) return message.reply(`❌ ใช้แบบนี้: \`${PREFIX}clearstock P001\``);
+
+      const products = loadProducts();
+      const index = products.findIndex((p) => p.id === productId);
+      if (index === -1) return message.reply("❌ ไม่พบสินค้า");
+
+      products[index].stocks = [];
+      saveProducts(products);
+
+      return message.reply(`✅ ล้าง stock ของ ${products[index].name} แล้ว`);
+    }
+
     if (message.content === `${PREFIX}listorders`) {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
 
@@ -1362,13 +1490,14 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 // ==================================================
-// INTERACTION HANDLERS
+// INTERACTIONS
 // ==================================================
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.guild) return;
 
     if (interaction.isButton()) {
+      // รับยศ
       if (interaction.customId === ROLE_PANEL_BUTTON_ID) {
         const validation = await validateRoleSetup(interaction.guild, TARGET_ROLE_ID);
         if (!validation.ok) {
@@ -1408,6 +1537,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // เปลี่ยนหน้าร้าน
       if (interaction.customId.startsWith("store_prev_") || interaction.customId.startsWith("store_next_")) {
         const products = loadProducts();
         const pages = getProductPages(products);
@@ -1431,6 +1561,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // admin
       if (interaction.customId === "admin_add_product") {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1497,6 +1628,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // จัดการสินค้า
       if (interaction.customId.startsWith("manage_")) {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1558,7 +1690,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           value = product.deliveryText || "";
         } else if (action === "stock") {
           title = `เพิ่มสต็อก ${productId}`;
-          label = "1 ครั้ง = 1 stock item เช่น role:123||link:abc";
+          label = "1 ครั้ง = 1 stock เช่น role:123||link:abc";
           style = TextInputStyle.Paragraph;
           value = "";
         }
@@ -1580,6 +1712,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.showModal(modal);
       }
 
+      // ticket info
       if (interaction.customId.startsWith("ticket_info_")) {
         const orderId = interaction.customId.replace("ticket_info_", "");
         const order = findOrderById(orderId);
@@ -1608,6 +1741,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // close ticket
       if (interaction.customId.startsWith("ticket_close_")) {
         const orderId = interaction.customId.replace("ticket_close_", "");
         const order = findOrderById(orderId);
@@ -1660,6 +1794,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      // approve
       if (interaction.customId.startsWith("approve_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์อนุมัติรายการนี้", ephemeral: true });
@@ -1837,6 +1972,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // reject
       if (interaction.customId.startsWith("reject_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์ปฏิเสธรายการนี้", ephemeral: true });
@@ -2084,7 +2220,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           if (!Array.isArray(products[index].stocks)) {
             products[index].stocks = [];
           }
-          // 1 ครั้ง = 1 stock item
           products[index].stocks.push(value);
         }
 
