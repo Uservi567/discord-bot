@@ -208,6 +208,65 @@ function sanitizeChannelName(text, fallback = "ticket") {
     .slice(0, 24) || fallback;
 }
 
+function applyProductTextVariables(text, data = {}) {
+  return String(text || "")
+    .replace(/\{user\}/gi, data.userMention || "")
+    .replace(/\{username\}/gi, data.username || "")
+    .replace(/\{product\}/gi, data.productName || "")
+    .replace(/\{price\}/gi, data.price || "")
+    .replace(/\{orderId\}/gi, data.orderId || "")
+    .replace(/\{ticket\}/gi, data.ticketMention || "")
+    .replace(/\{guild\}/gi, data.guildName || "");
+}
+
+function parseAutoOpenMessages(rawText) {
+  if (!rawText || !String(rawText).trim()) return [];
+
+  return String(rawText)
+    .split(/\n\s*---+\s*\n/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+async function sendProductAutoMessages(channel, member, product, order) {
+  const messages = parseAutoOpenMessages(product.autoOpenText);
+  if (!messages.length) return;
+
+  for (const msg of messages) {
+    const finalText = applyProductTextVariables(msg, {
+      userMention: `${member}`,
+      username: member.user.username,
+      productName: product.name,
+      price: product.price,
+      orderId: order.id,
+      ticketMention: `${channel}`,
+      guildName: channel.guild.name,
+    });
+
+    const chunks = [];
+    let remaining = finalText;
+
+    while (remaining.length > 3900) {
+      chunks.push(remaining.slice(0, 3900));
+      remaining = remaining.slice(3900);
+    }
+    if (remaining.length) chunks.push(remaining);
+
+    for (const chunk of chunks) {
+      await channel
+        .send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(COLORS.shop)
+              .setTitle("📩 ข้อความอัตโนมัติ")
+              .setDescription(chunk),
+          ],
+        })
+        .catch(() => {});
+    }
+  }
+}
+
 // ==================================================
 // ROLE HELPERS
 // ==================================================
@@ -586,8 +645,8 @@ function buildProductDetailsEmbed(guild, product) {
     })
     .setTitle(`✦ ${product.name}`)
     .addFields(
-      { name: "ราคา", value: product.price, inline: true },
-      { name: "รหัสสินค้า", value: product.id, inline: true },
+      { name: "ราคา", value: product.price || "-", inline: true },
+      { name: "รหัสสินค้า", value: product.id || "-", inline: true },
       { name: "หมวด", value: product.category || "ทั่วไป", inline: true },
       { name: "รายละเอียด", value: product.description || "ไม่มีรายละเอียดสินค้า" },
       {
@@ -595,6 +654,12 @@ function buildProductDetailsEmbed(guild, product) {
         value: product.deliveryText
           ? "มีข้อความ/ข้อมูลส่งให้อัตโนมัติหลังอนุมัติ"
           : "ไม่มีข้อความจัดส่งอัตโนมัติ",
+      },
+      {
+        name: "ข้อความอัตโนมัติเมื่อกดสินค้า",
+        value: product.autoOpenText
+          ? "มีข้อความอัตโนมัติส่งทันทีตอนลูกค้ากดเลือกสินค้า"
+          : "ยังไม่ได้ตั้งค่า",
       },
       {
         name: "สต็อก",
@@ -653,6 +718,7 @@ function buildProductManageButtons(productId) {
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`manage_delivery_${productId}`).setLabel("แก้ตัวสินค้า").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`manage_autoreply_${productId}`).setLabel("ข้อความเด้ง").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`manage_stock_${productId}`).setLabel("เพิ่มสต็อก").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`manage_toggle_${productId}`).setLabel("เปิด/ปิดขาย").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`manage_delete_${productId}`).setLabel("ลบสินค้า").setStyle(ButtonStyle.Danger)
@@ -913,6 +979,11 @@ async function createPrivateOrderTicket(guild, member, product, order) {
     components: [buildTicketButtons(order.id, false)],
   });
 
+  await sendProductAutoMessages(channel, member, product, {
+    ...order,
+    status: "waiting_slip",
+  });
+
   return channel;
 }
 
@@ -1077,7 +1148,6 @@ async function checkSystem(guild) {
     results.push({ ok, label, detail });
   };
 
-  // files
   try {
     ensureJsonFile(PRODUCTS_FILE);
     const products = loadProducts();
@@ -1094,7 +1164,6 @@ async function checkSystem(guild) {
     push(false, "orders.json", "อ่านไม่ได้");
   }
 
-  // bot perms
   const me = guild.members.me;
   push(!!me, "พบตัวบอทในเซิร์ฟ", me ? me.user.tag : "ไม่พบ");
 
@@ -1106,7 +1175,6 @@ async function checkSystem(guild) {
     push(me.permissions.has(PermissionsBitField.Flags.AttachFiles), "Attach Files", me.permissions.has(PermissionsBitField.Flags.AttachFiles) ? "มี" : "ไม่มี");
   }
 
-  // target role
   const targetRole = await guild.roles.fetch(TARGET_ROLE_ID).catch(() => null);
   push(!!targetRole, "TARGET_ROLE_ID", targetRole ? targetRole.name : "ไม่พบ");
 
@@ -1132,7 +1200,6 @@ async function checkSystem(guild) {
     push(true, "PURCHASE_ROLE_ID", "ปิดการใช้งาน");
   }
 
-  // channels
   const roleCh = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === ROLE_CHANNEL_NAME);
   const productCh = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === PRODUCTS_CHANNEL_NAME);
   const verifyCh = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === VERIFY_CHANNEL_NAME);
@@ -1192,7 +1259,6 @@ client.once(Events.ClientReady, async (bot) => {
   ensureJsonFile(ORDERS_FILE);
   console.log(`✅ Logged in as ${bot.user.tag}`);
 
-  // ไม่ auto setup
   setInterval(async () => {
     for (const guild of client.guilds.cache.values()) {
       await updateServerStatusChannels(guild).catch(() => {});
@@ -1211,7 +1277,6 @@ client.on(Events.MessageCreate, async (message) => {
 
     const admin = isAdmin(message.member);
 
-    // ฟังสลิปใน ticket
     const orders = loadOrders();
     const orderByChannel = orders.find(
       (o) => o.ticketChannelId === message.channel.id && isActiveOrderStatus(o.status)
@@ -1393,7 +1458,7 @@ client.on(Events.MessageCreate, async (message) => {
 
       const lines = products.map(
         (p) =>
-          `**${p.id}** • ${p.name} • ${p.price} • ${p.category || "ทั่วไป"} • ${p.active === false ? "ปิดขาย" : "เปิดขาย"} • stock:${Array.isArray(p.stocks) ? p.stocks.length : 0}`
+          `**${p.id}** • ${p.name} • ${p.price} • ${p.category || "ทั่วไป"} • ${p.active === false ? "ปิดขาย" : "เปิดขาย"} • stock:${Array.isArray(p.stocks) ? p.stocks.length : 0} • auto:${p.autoOpenText ? "on" : "off"}`
       );
 
       return message.reply({
@@ -1497,7 +1562,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.guild) return;
 
     if (interaction.isButton()) {
-      // รับยศ
       if (interaction.customId === ROLE_PANEL_BUTTON_ID) {
         const validation = await validateRoleSetup(interaction.guild, TARGET_ROLE_ID);
         if (!validation.ok) {
@@ -1537,7 +1601,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // เปลี่ยนหน้าร้าน
       if (interaction.customId.startsWith("store_prev_") || interaction.customId.startsWith("store_next_")) {
         const products = loadProducts();
         const pages = getProductPages(products);
@@ -1561,7 +1624,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // admin
       if (interaction.customId === "admin_add_product") {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1628,7 +1690,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // จัดการสินค้า
       if (interaction.customId.startsWith("manage_")) {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
@@ -1688,6 +1749,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
           label = "ตัวสินค้า / ข้อความหลังซื้อ";
           style = TextInputStyle.Paragraph;
           value = product.deliveryText || "";
+        } else if (action === "autoreply") {
+          title = `แก้ข้อความเด้ง ${productId}`;
+          label = "ข้อความอัตโนมัติเมื่อลูกค้ากดสินค้า";
+          style = TextInputStyle.Paragraph;
+          value = product.autoOpenText || "";
         } else if (action === "stock") {
           title = `เพิ่มสต็อก ${productId}`;
           label = "1 ครั้ง = 1 stock เช่น role:123||link:abc";
@@ -1712,7 +1778,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.showModal(modal);
       }
 
-      // ticket info
       if (interaction.customId.startsWith("ticket_info_")) {
         const orderId = interaction.customId.replace("ticket_info_", "");
         const order = findOrderById(orderId);
@@ -1741,7 +1806,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // close ticket
       if (interaction.customId.startsWith("ticket_close_")) {
         const orderId = interaction.customId.replace("ticket_close_", "");
         const order = findOrderById(orderId);
@@ -1794,7 +1858,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      // approve
       if (interaction.customId.startsWith("approve_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์อนุมัติรายการนี้", ephemeral: true });
@@ -1888,7 +1951,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                     product ? `> **สินค้า:** ${product.name}` : null,
                     baseRole ? `> **ยศหลักที่ได้รับ:** <@&${baseRole.id}>` : null,
                     grantedRoles.length
-                      ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}`
+                      ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}` 
                       : null,
                     "",
                     "ทีมงานอนุมัติรายการของคุณเรียบร้อยแล้ว",
@@ -1940,7 +2003,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 product ? `> **สินค้า:** ${product.name}` : null,
                 baseRole ? `> **ยศหลัก:** <@&${baseRole.id}>` : null,
                 grantedRoles.length
-                  ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}`
+                  ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}` 
                   : null,
                 textDeliveries.length ? `> **มีข้อความจัดส่ง:** ใช่` : null,
                 failedRoles.length ? `> **role ที่แจกไม่สำเร็จ:** ${failedRoles.length}` : null,
@@ -1972,7 +2035,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // reject
       if (interaction.customId.startsWith("reject_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์ปฏิเสธรายการนี้", ephemeral: true });
@@ -2172,6 +2234,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           category: category || "ทั่วไป",
           description,
           deliveryText: delivery || "",
+          autoOpenText: "",
           stocks: [],
           active: true,
           image: "",
@@ -2216,6 +2279,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (action === "category") products[index].category = value || "ทั่วไป";
         if (action === "desc") products[index].description = value;
         if (action === "delivery") products[index].deliveryText = value;
+        if (action === "autoreply") products[index].autoOpenText = value;
         if (action === "stock") {
           if (!Array.isArray(products[index].stocks)) {
             products[index].stocks = [];
