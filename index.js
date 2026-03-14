@@ -44,7 +44,6 @@ const PREFIX = "!";
 const TARGET_ROLE_ID = "1347851123364593753";
 
 // ยศหลักจากการซื้อ
-// ถ้าไม่ต้องการให้ role หลักตอนซื้อ ปล่อยเป็นค่าว่าง
 const PURCHASE_ROLE_ID = "";
 
 // ทีมงาน
@@ -52,7 +51,8 @@ const STAFF_ALERT_ROLE_ID = "";
 const REVIEWER_ROLE_ID = "";
 
 // รูป
-const ROLE_PANEL_GIF = "https://i.postimg.cc/BvgsywmH/snaptik-7505147525616176389-hd.gif";
+const ROLE_PANEL_GIF =
+  "https://i.postimg.cc/BvgsywmH/snaptik-7505147525616176389-hd.gif";
 const SHOP_BANNER = "";
 
 // ปุ่ม
@@ -106,6 +106,15 @@ const TRANSCRIPT_MESSAGE_LIMIT = 300;
 const TICKET_WARN_AFTER_MS = 30 * 60 * 1000;
 const TICKET_CLOSE_AFTER_MS = 2 * 60 * 60 * 1000;
 
+// Discord limits
+const EMBED_DESC_LIMIT = 4096;
+const EMBED_FIELD_LIMIT = 1024;
+const EMBED_TITLE_LIMIT = 256;
+const EMBED_AUTHOR_LIMIT = 256;
+const EMBED_TOTAL_LIMIT = 6000;
+const MAX_EMBEDS_PER_MESSAGE = 10;
+const SAFE_FIELD_CHUNK = 950;
+
 // ==================================================
 // FILE HELPERS
 // ==================================================
@@ -131,12 +140,35 @@ function writeJsonArray(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
 }
 
+function normalizeProduct(product = {}) {
+  return {
+    id: product.id || "",
+    name: String(product.name || "ไม่มีชื่อสินค้า"),
+    price: String(product.price || "-"),
+    category: String(product.category || "ทั่วไป"),
+    description: String(product.description || ""),
+    deliveryText: String(product.deliveryText || ""),
+    autoOpenText: String(product.autoOpenText || ""),
+    stocks: Array.isArray(product.stocks) ? product.stocks : [],
+    active: product.active !== false,
+    image: String(product.image || ""),
+    createdBy: product.createdBy || null,
+    createdAt: product.createdAt || Date.now(),
+  };
+}
+
+function normalizeAllProducts() {
+  const products = readJsonArray(PRODUCTS_FILE).map(normalizeProduct);
+  writeJsonArray(PRODUCTS_FILE, products);
+  return products;
+}
+
 function loadProducts() {
-  return readJsonArray(PRODUCTS_FILE);
+  return normalizeAllProducts();
 }
 
 function saveProducts(products) {
-  writeJsonArray(PRODUCTS_FILE, products);
+  writeJsonArray(PRODUCTS_FILE, products.map(normalizeProduct));
 }
 
 function loadOrders() {
@@ -168,6 +200,88 @@ function generateOrderId(orders) {
 // ==================================================
 // GENERAL HELPERS
 // ==================================================
+function clampText(text, max, fallback = "ไม่มีข้อมูล") {
+  const value = String(text || "").trim();
+  if (!value) return fallback;
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 30)}\n\n...ข้อความถูกตัดอัตโนมัติ`;
+}
+
+function splitLongText(text, chunkSize = SAFE_FIELD_CHUNK) {
+  const value = String(text || "").trim();
+  if (!value) return [];
+
+  const lines = value.split("\n");
+  const chunks = [];
+  let current = "";
+
+  for (const line of lines) {
+    const candidate = current ? `${current}\n${line}` : line;
+
+    if (candidate.length <= chunkSize) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) {
+      chunks.push(current);
+      current = "";
+    }
+
+    if (line.length <= chunkSize) {
+      current = line;
+      continue;
+    }
+
+    let remaining = line;
+    while (remaining.length > chunkSize) {
+      chunks.push(remaining.slice(0, chunkSize));
+      remaining = remaining.slice(chunkSize);
+    }
+    if (remaining) current = remaining;
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size));
+  }
+  return out;
+}
+
+async function sendEmbedsSmart(target, embeds, payload = {}) {
+  const safeEmbeds = Array.isArray(embeds) ? embeds.filter(Boolean) : [];
+  if (!safeEmbeds.length) {
+    return target.send?.(payload) || target.reply?.(payload);
+  }
+
+  const groups = chunkArray(safeEmbeds, MAX_EMBEDS_PER_MESSAGE);
+  let first = true;
+
+  for (const group of groups) {
+    if (first) {
+      if (typeof target.reply === "function") {
+        await target.reply({ ...payload, embeds: group });
+      } else if (typeof target.send === "function") {
+        await target.send({ ...payload, embeds: group });
+      } else if (typeof target.update === "function") {
+        await target.update({ ...payload, embeds: group });
+      } else if (typeof target.followUp === "function") {
+        await target.followUp({ ...payload, embeds: group });
+      }
+      first = false;
+    } else if (typeof target.followUp === "function") {
+      await target.followUp({ embeds: group, ephemeral: payload.ephemeral }).catch(() => {});
+    } else if (typeof target.send === "function") {
+      await target.send({ embeds: group }).catch(() => {});
+    }
+  }
+}
+
 function getOrderStatusText(status) {
   const map = {
     pending: "เริ่มคำสั่งซื้อ",
@@ -221,7 +335,6 @@ function applyProductTextVariables(text, data = {}) {
 
 function parseAutoOpenMessages(rawText) {
   if (!rawText || !String(rawText).trim()) return [];
-
   return String(rawText)
     .split(/\n\s*---+\s*\n/g)
     .map((s) => s.trim())
@@ -243,15 +356,7 @@ async function sendProductAutoMessages(channel, member, product, order) {
       guildName: channel.guild.name,
     });
 
-    const chunks = [];
-    let remaining = finalText;
-
-    while (remaining.length > 3900) {
-      chunks.push(remaining.slice(0, 3900));
-      remaining = remaining.slice(3900);
-    }
-    if (remaining.length) chunks.push(remaining);
-
+    const chunks = splitLongText(finalText, 3900);
     for (const chunk of chunks) {
       await channel
         .send({
@@ -259,12 +364,18 @@ async function sendProductAutoMessages(channel, member, product, order) {
             new EmbedBuilder()
               .setColor(COLORS.shop)
               .setTitle("📩 ข้อความอัตโนมัติ")
-              .setDescription(chunk),
+              .setDescription(clampText(chunk, EMBED_DESC_LIMIT, "ไม่มีข้อความ")),
           ],
         })
         .catch(() => {});
     }
   }
+}
+
+async function readAttachmentText(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("อ่านไฟล์แนบไม่ได้");
+  return await response.text();
 }
 
 // ==================================================
@@ -544,7 +655,7 @@ function buildRolePanelEmbed(guild) {
   return new EmbedBuilder()
     .setColor(COLORS.dark)
     .setAuthor({
-      name: guild.name,
+      name: clampText(guild.name, EMBED_AUTHOR_LIMIT, "Server"),
       iconURL: guild.iconURL({ dynamic: true }) || undefined,
     })
     .setTitle("✦ ระบบรับยศ")
@@ -602,7 +713,7 @@ function buildShopHeaderEmbed(guild) {
   const embed = new EmbedBuilder()
     .setColor(COLORS.shop)
     .setAuthor({
-      name: `${guild.name} • Official Store`,
+      name: clampText(`${guild.name} • Official Store`, EMBED_AUTHOR_LIMIT, "Store"),
       iconURL: guild.iconURL({ dynamic: true }) || undefined,
     })
     .setTitle("✦ ร้านค้า")
@@ -620,46 +731,97 @@ function buildShopHeaderEmbed(guild) {
 }
 
 function buildProductSelectEmbed(guild, page, totalPages, items) {
-  const lines = items.map(
-    (p, i) =>
-      `**${i + 1}. ${p.name}** — ${p.price}${p.stockCount !== undefined ? ` • คงเหลือ ${p.stockCount}` : ""}\nหมวด: ${p.category || "ทั่วไป"} • \`${p.id}\``
-  );
+  const lines = items.map((p, i) => {
+    const shortDesc = p.description
+      ? `\n${clampText(p.description, 120, "")}`
+      : "";
+    return `**${i + 1}. ${clampText(p.name, 100)}** — ${clampText(p.price, 80)}${
+      p.stockCount !== undefined ? ` • คงเหลือ ${p.stockCount}` : ""
+    }\nหมวด: ${clampText(p.category || "ทั่วไป", 60)} • \`${p.id}\`${shortDesc}`;
+  });
 
   return new EmbedBuilder()
     .setColor(COLORS.shop)
     .setAuthor({
-      name: `${guild.name} • Product Selection`,
+      name: clampText(`${guild.name} • Product Selection`, EMBED_AUTHOR_LIMIT, "Products"),
       iconURL: guild.iconURL({ dynamic: true }) || undefined,
     })
     .setTitle("✦ เลือกสินค้า")
-    .setDescription(lines.join("\n\n") || "ยังไม่มีสินค้า")
+    .setDescription(clampText(lines.join("\n\n") || "ยังไม่มีสินค้า", EMBED_DESC_LIMIT))
     .setFooter({ text: `หน้า ${page + 1}/${totalPages}` });
 }
 
-function buildProductDetailsEmbed(guild, product) {
-  const embed = new EmbedBuilder()
+function buildSectionEmbeds({ guild, product, title, rawText, color, prefix }) {
+  const chunks = splitLongText(rawText, SAFE_FIELD_CHUNK);
+  if (!chunks.length) return [];
+
+  const pages = [];
+  const grouped = chunkArray(chunks, 4);
+
+  grouped.forEach((group, groupIndex) => {
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setAuthor({
+        name: clampText(`${guild.name} • Product Details`, EMBED_AUTHOR_LIMIT, "Product Details"),
+        iconURL: guild.iconURL({ dynamic: true }) || undefined,
+      })
+      .setTitle(
+        clampText(
+          `✦ ${product.name} • ${title}${grouped.length > 1 ? ` (${groupIndex + 1}/${grouped.length})` : ""}`,
+          EMBED_TITLE_LIMIT
+        )
+      );
+
+    if (product.image && groupIndex === 0) embed.setImage(product.image);
+    if (guild.iconURL()) embed.setThumbnail(guild.iconURL({ dynamic: true }));
+
+    group.forEach((chunk, i) => {
+      embed.addFields({
+        name: `${prefix} ${groupIndex * 4 + i + 1}`,
+        value: clampText(chunk, EMBED_FIELD_LIMIT, "ไม่มีข้อมูล"),
+      });
+    });
+
+    pages.push(embed);
+  });
+
+  return pages;
+}
+
+function buildProductDetailsEmbeds(guild, rawProduct) {
+  const product = normalizeProduct(rawProduct);
+
+  const summary = new EmbedBuilder()
     .setColor(COLORS.shop)
     .setAuthor({
-      name: `${guild.name} • Product Details`,
+      name: clampText(`${guild.name} • Product Details`, EMBED_AUTHOR_LIMIT, "Product Details"),
       iconURL: guild.iconURL({ dynamic: true }) || undefined,
     })
-    .setTitle(`✦ ${product.name}`)
+    .setTitle(clampText(`✦ ${product.name}`, EMBED_TITLE_LIMIT))
     .addFields(
-      { name: "ราคา", value: product.price || "-", inline: true },
-      { name: "รหัสสินค้า", value: product.id || "-", inline: true },
-      { name: "หมวด", value: product.category || "ทั่วไป", inline: true },
-      { name: "รายละเอียด", value: product.description || "ไม่มีรายละเอียดสินค้า" },
+      { name: "ราคา", value: clampText(product.price, 100), inline: true },
+      { name: "รหัสสินค้า", value: clampText(product.id, 100), inline: true },
+      { name: "หมวด", value: clampText(product.category || "ทั่วไป", 100), inline: true },
       {
-        name: "การจัดส่ง",
-        value: product.deliveryText
-          ? "มีข้อความ/ข้อมูลส่งให้อัตโนมัติหลังอนุมัติ"
-          : "ไม่มีข้อความจัดส่งอัตโนมัติ",
+        name: "สรุปรายละเอียด",
+        value: product.description
+          ? `มีรายละเอียด ${product.description.length.toLocaleString("th-TH")} ตัวอักษร`
+          : "ไม่มีรายละเอียด",
+        inline: true,
       },
       {
-        name: "ข้อความอัตโนมัติเมื่อกดสินค้า",
+        name: "ข้อความหลังซื้อ",
+        value: product.deliveryText
+          ? `มีข้อความ ${product.deliveryText.length.toLocaleString("th-TH")} ตัวอักษร`
+          : "ไม่มี",
+        inline: true,
+      },
+      {
+        name: "ข้อความเด้ง",
         value: product.autoOpenText
-          ? "มีข้อความอัตโนมัติส่งทันทีตอนลูกค้ากดเลือกสินค้า"
-          : "ยังไม่ได้ตั้งค่า",
+          ? `มีข้อความ ${product.autoOpenText.length.toLocaleString("th-TH")} ตัวอักษร`
+          : "ไม่มี",
+        inline: true,
       },
       {
         name: "สต็อก",
@@ -673,17 +835,52 @@ function buildProductDetailsEmbed(guild, product) {
       }
     );
 
-  if (product.image) embed.setImage(product.image);
-  if (guild.iconURL()) embed.setThumbnail(guild.iconURL({ dynamic: true }));
+  if (product.image) summary.setImage(product.image);
+  if (guild.iconURL()) summary.setThumbnail(guild.iconURL({ dynamic: true }));
 
-  return embed;
+  const embeds = [summary];
+
+  embeds.push(
+    ...buildSectionEmbeds({
+      guild,
+      product,
+      title: "รายละเอียดสินค้า",
+      rawText: product.description,
+      color: COLORS.blue,
+      prefix: "รายละเอียดส่วนที่",
+    })
+  );
+
+  embeds.push(
+    ...buildSectionEmbeds({
+      guild,
+      product,
+      title: "ตัวสินค้า / ข้อความหลังซื้อ",
+      rawText: product.deliveryText,
+      color: COLORS.green,
+      prefix: "ข้อความส่วนที่",
+    })
+  );
+
+  embeds.push(
+    ...buildSectionEmbeds({
+      guild,
+      product,
+      title: "ข้อความเด้งอัตโนมัติ",
+      rawText: product.autoOpenText,
+      color: COLORS.orange,
+      prefix: "ข้อความเด้งส่วนที่",
+    })
+  );
+
+  return embeds;
 }
 
 function buildAdminPanelEmbed(guild) {
   return new EmbedBuilder()
     .setColor(COLORS.shop)
     .setAuthor({
-      name: `${guild.name} • Product Control`,
+      name: clampText(`${guild.name} • Product Control`, EMBED_AUTHOR_LIMIT, "Product Control"),
       iconURL: guild.iconURL({ dynamic: true }) || undefined,
     })
     .setTitle("✦ PRODUCT CONTROL PANEL")
@@ -694,6 +891,8 @@ function buildAdminPanelEmbed(guild) {
         "➕ เพิ่มสินค้า = ใช้ฟอร์ม",
         "🧩 จัดการสินค้า = เลือกสินค้าแล้วแก้ไข",
         "🔄 รีเฟรชร้าน = อัปเดตหน้าร้าน",
+        "",
+        `คำสั่งเสริม: \`${PREFIX}importdesc P001\` + แนบไฟล์ txt`,
       ].join("\n")
     );
 }
@@ -701,9 +900,21 @@ function buildAdminPanelEmbed(guild) {
 function buildAdminPanelButtons() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("admin_add_product").setLabel("เพิ่มสินค้า").setEmoji("➕").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("admin_manage_product").setLabel("จัดการสินค้า").setEmoji("🧩").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("admin_refresh_shop").setLabel("รีเฟรชร้าน").setEmoji("🔄").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder()
+        .setCustomId("admin_add_product")
+        .setLabel("เพิ่มสินค้า")
+        .setEmoji("➕")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId("admin_manage_product")
+        .setLabel("จัดการสินค้า")
+        .setEmoji("🧩")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("admin_refresh_shop")
+        .setLabel("รีเฟรชร้าน")
+        .setEmoji("🔄")
+        .setStyle(ButtonStyle.Secondary)
     ),
   ];
 }
@@ -714,14 +925,26 @@ function buildProductManageButtons(productId) {
       new ButtonBuilder().setCustomId(`manage_name_${productId}`).setLabel("แก้ชื่อ").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`manage_price_${productId}`).setLabel("แก้ราคา").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`manage_category_${productId}`).setLabel("แก้หมวด").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`manage_desc_${productId}`).setLabel("แก้รายละเอียด").setStyle(ButtonStyle.Primary)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`manage_delivery_${productId}`).setLabel("แก้ตัวสินค้า").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`manage_autoreply_${productId}`).setLabel("ข้อความเด้ง").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`manage_stock_${productId}`).setLabel("เพิ่มสต็อก").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`manage_toggle_${productId}`).setLabel("เปิด/ปิดขาย").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`manage_delete_${productId}`).setLabel("ลบสินค้า").setStyle(ButtonStyle.Danger)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`manage_desc_${productId}`).setLabel("แทนรายละเอียด").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`manage_descappend_${productId}`).setLabel("ต่อท้ายรายละเอียด").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`manage_descclear_${productId}`).setLabel("ล้างรายละเอียด").setStyle(ButtonStyle.Danger)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`manage_delivery_${productId}`).setLabel("แทนข้อความหลังซื้อ").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`manage_deliveryappend_${productId}`).setLabel("ต่อท้ายข้อความหลังซื้อ").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`manage_deliveryclear_${productId}`).setLabel("ล้างข้อความหลังซื้อ").setStyle(ButtonStyle.Danger)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`manage_autoreply_${productId}`).setLabel("แทนข้อความเด้ง").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`manage_autoreplyappend_${productId}`).setLabel("ต่อท้ายข้อความเด้ง").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`manage_autoreplyclear_${productId}`).setLabel("ล้างข้อความเด้ง").setStyle(ButtonStyle.Danger)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`manage_stock_${productId}`).setLabel("เพิ่มสต็อก").setStyle(ButtonStyle.Secondary)
     ),
   ];
 }
@@ -765,8 +988,12 @@ function buildStoreComponents(products, page = 0) {
     .addOptions(
       current.length
         ? current.map((p) => ({
-            label: p.name.slice(0, 100),
-            description: `${p.price}${p.stockCount !== undefined ? ` | คงเหลือ ${p.stockCount}` : ""}`.slice(0, 100),
+            label: clampText(p.name, 100),
+            description: clampText(
+              `${p.price}${p.stockCount !== undefined ? ` | คงเหลือ ${p.stockCount}` : ""}`,
+              100,
+              "-"
+            ),
             value: p.id,
           }))
         : [{ label: "ยังไม่มีสินค้า", value: "empty", description: "ไม่มีสินค้าในตอนนี้" }]
@@ -775,9 +1002,20 @@ function buildStoreComponents(products, page = 0) {
   const row1 = new ActionRowBuilder().addComponents(select);
 
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`store_prev_${page}`).setLabel("ก่อนหน้า").setStyle(ButtonStyle.Secondary).setDisabled(page <= 0),
-    new ButtonBuilder().setCustomId(`store_next_${page}`).setLabel("ถัดไป").setStyle(ButtonStyle.Secondary).setDisabled(page >= pages.length - 1),
-    new ButtonBuilder().setCustomId("store_refresh").setLabel("รีเฟรช").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder()
+      .setCustomId(`store_prev_${page}`)
+      .setLabel("ก่อนหน้า")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page <= 0),
+    new ButtonBuilder()
+      .setCustomId(`store_next_${page}`)
+      .setLabel("ถัดไป")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page >= pages.length - 1),
+    new ButtonBuilder()
+      .setCustomId("store_refresh")
+      .setLabel("รีเฟรช")
+      .setStyle(ButtonStyle.Primary)
   );
 
   return [row1, row2];
@@ -785,8 +1023,12 @@ function buildStoreComponents(products, page = 0) {
 
 function buildManageSelect(products) {
   const options = products.slice(0, 25).map((p) => ({
-    label: `${p.id} • ${p.name}`.slice(0, 100),
-    description: `${p.price} • ${p.active === false ? "ปิดขาย" : "เปิดขาย"}`.slice(0, 100),
+    label: clampText(`${p.id} • ${p.name}`, 100),
+    description: clampText(
+      `${p.price} • ${p.active === false ? "ปิดขาย" : "เปิดขาย"}`,
+      100,
+      "-"
+    ),
     value: p.id,
   }));
 
@@ -889,8 +1131,8 @@ function buildOrderTicketEmbed(order, product, user) {
         `${user}`,
         "",
         `> **เลขออเดอร์:** ${order.id}`,
-        `> **สินค้า:** ${product.name}`,
-        `> **ราคา:** ${product.price}`,
+        `> **สินค้า:** ${clampText(product.name, 150)}`,
+        `> **ราคา:** ${clampText(product.price, 100)}`,
         `> **สถานะ:** ${getOrderStatusText(order.status)}`,
         "",
         "กรุณาส่งสลิปในห้องนี้ได้เลย",
@@ -1043,7 +1285,9 @@ async function createTranscriptAttachment(channel) {
       const author = m.author?.tag || "Unknown";
       const content = (m.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const attachments = m.attachments.size
-        ? `<div class="attach">${[...m.attachments.values()].map((a) => `<a href="${a.url}">${a.url}</a>`).join("<br>")}</div>`
+        ? `<div class="attach">${[...m.attachments.values()]
+            .map((a) => `<a href="${a.url}">${a.url}</a>`)
+            .join("<br>")}</div>`
         : "";
 
       return `
@@ -1132,7 +1376,9 @@ async function checkTicketTimeouts() {
           warnedAt: Date.now(),
         }));
 
-        await channel.send("⚠ กรุณาส่งสลิปภายในเวลาที่กำหนด ไม่เช่นนั้น ticket นี้จะถูกปิดอัตโนมัติ").catch(() => {});
+        await channel
+          .send("⚠ กรุณาส่งสลิปภายในเวลาที่กำหนด ไม่เช่นนั้น ticket นี้จะถูกปิดอัตโนมัติ")
+          .catch(() => {});
       }
     }
   }
@@ -1143,10 +1389,7 @@ async function checkTicketTimeouts() {
 // ==================================================
 async function checkSystem(guild) {
   const results = [];
-
-  const push = (ok, label, detail = "") => {
-    results.push({ ok, label, detail });
-  };
+  const push = (ok, label, detail = "") => results.push({ ok, label, detail });
 
   try {
     ensureJsonFile(PRODUCTS_FILE);
@@ -1257,6 +1500,8 @@ async function setupAll(guild) {
 client.once(Events.ClientReady, async (bot) => {
   ensureJsonFile(PRODUCTS_FILE);
   ensureJsonFile(ORDERS_FILE);
+  normalizeAllProducts();
+
   console.log(`✅ Logged in as ${bot.user.tag}`);
 
   setInterval(async () => {
@@ -1277,6 +1522,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     const admin = isAdmin(message.member);
 
+    // ฟังสลิปใน ticket
     const orders = loadOrders();
     const orderByChannel = orders.find(
       (o) => o.ticketChannelId === message.channel.id && isActiveOrderStatus(o.status)
@@ -1310,8 +1556,8 @@ client.on(Events.MessageCreate, async (message) => {
           [
             `> **เลขออเดอร์:** ${updatedOrder.id}`,
             `> **ลูกค้า:** ${message.author} (${message.author.tag})`,
-            `> **สินค้า:** ${product.name}`,
-            `> **ราคา:** ${product.price}`,
+            `> **สินค้า:** ${clampText(product.name, 120)}`,
+            `> **ราคา:** ${clampText(product.price, 80)}`,
             `> **Ticket:** <#${message.channel.id}>`,
             duplicate ? `> **คำเตือน:** สลิปนี้เคยใช้กับออเดอร์ ${duplicate.id}` : null,
           ]
@@ -1350,7 +1596,7 @@ client.on(Events.MessageCreate, async (message) => {
           new EmbedBuilder()
             .setColor(COLORS.blue)
             .setTitle("ส่งสลิปเรียบร้อย")
-            .setDescription("ระบบส่งสลิปของคุณไปให้ทีมงานตรวจแล้ว กรุณารอการยืนยัน")
+            .setDescription("ระบบส่งสลิปของคุณไปให้ทีมงานตรวจแล้ว กรุณารอการยืนยัน"),
         ],
       }).catch(() => {});
 
@@ -1364,8 +1610,8 @@ client.on(Events.MessageCreate, async (message) => {
             [
               `> **เลขออเดอร์:** ${updatedOrder.id}`,
               `> **ลูกค้า:** ${message.author.tag}`,
-              `> **สินค้า:** ${product.name}`,
-              `> **ราคา:** ${product.price}`,
+              `> **สินค้า:** ${clampText(product.name, 120)}`,
+              `> **ราคา:** ${clampText(product.price, 80)}`,
               duplicate ? `> **หมายเหตุ:** สลิปซ้ำกับ ${duplicate.id}` : null,
             ]
               .filter(Boolean)
@@ -1378,15 +1624,12 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
+    // setup
     if (message.content === `${PREFIX}setupall` || message.content === `${PREFIX}setup`) {
       if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
-
       const done = await setupAll(message.guild);
       return message.reply(
-        [
-          "✅ สร้างระบบทั้งหมดเรียบร้อยแล้ว",
-          `สำเร็จ: ${done.join(", ")}`
-        ].join("\n")
+        ["✅ สร้างระบบทั้งหมดเรียบร้อยแล้ว", `สำเร็จ: ${done.join(", ")}`].join("\n")
       );
     }
 
@@ -1416,7 +1659,6 @@ client.on(Events.MessageCreate, async (message) => {
 
       const results = await checkSystem(message.guild);
       const okCount = results.filter((r) => r.ok).length;
-
       const lines = results.map(
         (r) => `${r.ok ? "✅" : "❌"} ${r.label}${r.detail ? ` — ${r.detail}` : ""}`
       );
@@ -1426,7 +1668,7 @@ client.on(Events.MessageCreate, async (message) => {
           new EmbedBuilder()
             .setColor(okCount === results.length ? COLORS.green : COLORS.yellow)
             .setTitle("System Check")
-            .setDescription(lines.join("\n").slice(0, 4000)),
+            .setDescription(clampText(lines.join("\n"), EMBED_DESC_LIMIT)),
         ],
       });
     }
@@ -1458,17 +1700,22 @@ client.on(Events.MessageCreate, async (message) => {
 
       const lines = products.map(
         (p) =>
-          `**${p.id}** • ${p.name} • ${p.price} • ${p.category || "ทั่วไป"} • ${p.active === false ? "ปิดขาย" : "เปิดขาย"} • stock:${Array.isArray(p.stocks) ? p.stocks.length : 0} • auto:${p.autoOpenText ? "on" : "off"}`
+          `**${p.id}** • ${clampText(p.name, 80)} • ${clampText(p.price, 50)} • ${clampText(
+            p.category || "ทั่วไป",
+            50
+          )} • ${p.active === false ? "ปิดขาย" : "เปิดขาย"} • stock:${
+            Array.isArray(p.stocks) ? p.stocks.length : 0
+          } • desc:${p.description.length} • delivery:${p.deliveryText.length} • auto:${p.autoOpenText.length}`
       );
 
-      return message.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(COLORS.blue)
-            .setTitle("รายการสินค้า")
-            .setDescription(lines.join("\n").slice(0, 4000)),
-        ],
-      });
+      const embedGroups = splitLongText(lines.join("\n"), 3900).map((chunk, i, arr) =>
+        new EmbedBuilder()
+          .setColor(COLORS.blue)
+          .setTitle(`รายการสินค้า${arr.length > 1 ? ` (${i + 1}/${arr.length})` : ""}`)
+          .setDescription(chunk)
+      );
+
+      return sendEmbedsSmart(message, embedGroups);
     }
 
     if (message.content.startsWith(`${PREFIX}viewproduct`)) {
@@ -1481,7 +1728,7 @@ client.on(Events.MessageCreate, async (message) => {
       const product = products.find((p) => p.id === productId);
       if (!product) return message.reply("❌ ไม่พบสินค้า");
 
-      return message.reply({ embeds: [buildProductDetailsEmbed(message.guild, product)] });
+      return sendEmbedsSmart(message, buildProductDetailsEmbeds(message.guild, product));
     }
 
     if (message.content.startsWith(`${PREFIX}stockinfo`)) {
@@ -1495,19 +1742,20 @@ client.on(Events.MessageCreate, async (message) => {
       if (!product) return message.reply("❌ ไม่พบสินค้า");
 
       const stocks = Array.isArray(product.stocks) ? product.stocks : [];
-      const preview = stocks.slice(0, 5).map((s, i) => `#${i + 1} ${String(s).slice(0, 300)}`);
+      const preview = stocks.slice(0, 10).map((s, i) => `#${i + 1} ${String(s).slice(0, 300)}`);
 
       return message.reply({
         embeds: [
           new EmbedBuilder()
             .setColor(COLORS.blue)
-            .setTitle(`Stock Info • ${product.name}`)
+            .setTitle(`Stock Info • ${clampText(product.name, 120)}`)
             .setDescription(
-              [
-                `> จำนวน stock: ${stocks.length}`,
-                "",
-                preview.length ? preview.join("\n\n") : "ยังไม่มี stock",
-              ].join("\n")
+              clampText(
+                [`> จำนวน stock: ${stocks.length}`, "", preview.length ? preview.join("\n\n") : "ยังไม่มี stock"].join(
+                  "\n"
+                ),
+                EMBED_DESC_LIMIT
+              )
             ),
         ],
       });
@@ -1544,9 +1792,70 @@ client.on(Events.MessageCreate, async (message) => {
           new EmbedBuilder()
             .setColor(COLORS.blue)
             .setTitle("รายการออเดอร์ล่าสุด")
-            .setDescription(lines.join("\n").slice(0, 4000)),
+            .setDescription(clampText(lines.join("\n"), EMBED_DESC_LIMIT)),
         ],
       });
+    }
+
+    // import detail from txt / md
+    if (message.content.startsWith(`${PREFIX}importdesc`)) {
+      if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
+
+      const productId = message.content.split(" ")[1]?.trim();
+      if (!productId) {
+        return message.reply(`❌ ใช้แบบนี้: \`${PREFIX}importdesc P001\` แล้วแนบไฟล์ .txt หรือ .md`);
+      }
+
+      const attachment = message.attachments.first();
+      if (!attachment) {
+        return message.reply("❌ กรุณาแนบไฟล์ .txt หรือ .md");
+      }
+
+      const isTextLike =
+        attachment.name?.endsWith(".txt") ||
+        attachment.name?.endsWith(".md") ||
+        attachment.contentType?.includes("text");
+
+      if (!isTextLike) {
+        return message.reply("❌ รองรับเฉพาะไฟล์ .txt หรือ .md");
+      }
+
+      const products = loadProducts();
+      const index = products.findIndex((p) => p.id === productId);
+      if (index === -1) return message.reply("❌ ไม่พบสินค้า");
+
+      const text = await readAttachmentText(attachment.url);
+      products[index].description = text;
+      saveProducts(products);
+
+      return message.reply(
+        `✅ นำเข้ารายละเอียดสินค้า ${products[index].name} สำเร็จ (${text.length.toLocaleString("th-TH")} ตัวอักษร)`
+      );
+    }
+
+    if (message.content.startsWith(`${PREFIX}appenddesc`)) {
+      if (!admin) return message.reply("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้");
+
+      const parts = message.content.split(" ");
+      const productId = parts[1]?.trim();
+      const appendText = parts.slice(2).join(" ").trim();
+
+      if (!productId || !appendText) {
+        return message.reply(`❌ ใช้แบบนี้: \`${PREFIX}appenddesc P001 ข้อความที่ต้องการต่อท้าย\``);
+      }
+
+      const products = loadProducts();
+      const index = products.findIndex((p) => p.id === productId);
+      if (index === -1) return message.reply("❌ ไม่พบสินค้า");
+
+      products[index].description = [products[index].description, appendText].filter(Boolean).join("\n");
+      saveProducts(products);
+
+      return message.reply(
+        `✅ ต่อท้ายรายละเอียดสินค้า ${products[index].name} แล้ว (รวม ${products[index].description.length.toLocaleString(
+          "th-TH"
+        )} ตัวอักษร)`
+      );
     }
   } catch (error) {
     console.error("MessageCreate error:", error);
@@ -1562,6 +1871,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.guild) return;
 
     if (interaction.isButton()) {
+      // รับยศ
       if (interaction.customId === ROLE_PANEL_BUTTON_ID) {
         const validation = await validateRoleSetup(interaction.guild, TARGET_ROLE_ID);
         if (!validation.ok) {
@@ -1583,7 +1893,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
               new EmbedBuilder()
                 .setColor(COLORS.red)
                 .setTitle("✦ ถอดยศเรียบร้อย")
-                .setDescription(`ระบบได้เอายศ <@&${TARGET_ROLE_ID}> ออกจากคุณแล้ว`)
+                .setDescription(`ระบบได้เอายศ <@&${TARGET_ROLE_ID}> ออกจากคุณแล้ว`),
             ],
             ephemeral: true,
           });
@@ -1595,12 +1905,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
             new EmbedBuilder()
               .setColor(COLORS.green)
               .setTitle("✦ รับยศสำเร็จ")
-              .setDescription(`ระบบได้มอบยศ <@&${TARGET_ROLE_ID}> ให้คุณแล้ว`)
+              .setDescription(`ระบบได้มอบยศ <@&${TARGET_ROLE_ID}> ให้คุณแล้ว`),
           ],
           ephemeral: true,
         });
       }
 
+      // เปลี่ยนหน้าร้าน
       if (interaction.customId.startsWith("store_prev_") || interaction.customId.startsWith("store_next_")) {
         const products = loadProducts();
         const pages = getProductPages(products);
@@ -1624,14 +1935,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // admin
       if (interaction.customId === "admin_add_product") {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
         }
 
-        const modal = new ModalBuilder()
-          .setCustomId("modal_add_product")
-          .setTitle("เพิ่มสินค้า");
+        const modal = new ModalBuilder().setCustomId("modal_add_product").setTitle("เพิ่มสินค้า");
 
         modal.addComponents(
           new ActionRowBuilder().addComponents(
@@ -1644,10 +1954,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
             new TextInputBuilder().setCustomId("category").setLabel("หมวดสินค้า").setStyle(TextInputStyle.Short).setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId("description").setLabel("รายละเอียดสินค้า").setStyle(TextInputStyle.Paragraph).setRequired(true)
+            new TextInputBuilder()
+              .setCustomId("description")
+              .setLabel("รายละเอียดสินค้า (รอบแรก)")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(false)
           ),
           new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId("delivery").setLabel("ตัวสินค้า / ข้อความหลังซื้อ").setStyle(TextInputStyle.Paragraph).setRequired(false)
+            new TextInputBuilder()
+              .setCustomId("delivery")
+              .setLabel("ตัวสินค้า / ข้อความหลังซื้อ (รอบแรก)")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(false)
           )
         );
 
@@ -1690,12 +2008,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // จัดการสินค้า
       if (interaction.customId.startsWith("manage_")) {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์", ephemeral: true });
         }
 
-        const [, action, productId] = interaction.customId.split("_");
+        const parts = interaction.customId.split("_");
+        const action = parts[1];
+        const productId = parts.slice(2).join("_");
+
         const products = loadProducts();
         const product = products.find((p) => p.id === productId);
 
@@ -1721,6 +2043,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
+        if (action === "descclear") {
+          product.description = "";
+          saveProducts(products);
+          return interaction.reply({
+            content: `✅ ล้างรายละเอียดสินค้า ${product.name} แล้ว`,
+            ephemeral: true,
+          });
+        }
+
+        if (action === "deliveryclear") {
+          product.deliveryText = "";
+          saveProducts(products);
+          return interaction.reply({
+            content: `✅ ล้างข้อความหลังซื้อ ${product.name} แล้ว`,
+            ephemeral: true,
+          });
+        }
+
+        if (action === "autoreplyclear") {
+          product.autoOpenText = "";
+          saveProducts(products);
+          return interaction.reply({
+            content: `✅ ล้างข้อความเด้งของ ${product.name} แล้ว`,
+            ephemeral: true,
+          });
+        }
+
         const modal = new ModalBuilder();
         let title = "";
         let label = "";
@@ -1740,25 +2089,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
           label = "หมวดใหม่";
           value = product.category || "";
         } else if (action === "desc") {
-          title = `แก้รายละเอียด ${productId}`;
-          label = "รายละเอียดใหม่";
+          title = `แทนรายละเอียด ${productId}`;
+          label = "รายละเอียดใหม่ (แทนของเดิม)";
           style = TextInputStyle.Paragraph;
-          value = product.description || "";
+          value = clampText(product.description || "", 4000, "");
+        } else if (action === "descappend") {
+          title = `ต่อท้ายรายละเอียด ${productId}`;
+          label = "ข้อความที่จะต่อท้าย";
+          style = TextInputStyle.Paragraph;
+          value = "";
         } else if (action === "delivery") {
-          title = `แก้ตัวสินค้า ${productId}`;
-          label = "ตัวสินค้า / ข้อความหลังซื้อ";
+          title = `แทนข้อความหลังซื้อ ${productId}`;
+          label = "ตัวสินค้า / ข้อความหลังซื้อใหม่";
           style = TextInputStyle.Paragraph;
-          value = product.deliveryText || "";
+          value = clampText(product.deliveryText || "", 4000, "");
+        } else if (action === "deliveryappend") {
+          title = `ต่อท้ายข้อความหลังซื้อ ${productId}`;
+          label = "ข้อความที่จะต่อท้าย";
+          style = TextInputStyle.Paragraph;
+          value = "";
         } else if (action === "autoreply") {
-          title = `แก้ข้อความเด้ง ${productId}`;
-          label = "ข้อความอัตโนมัติเมื่อลูกค้ากดสินค้า";
+          title = `แทนข้อความเด้ง ${productId}`;
+          label = "ข้อความเด้งใหม่";
           style = TextInputStyle.Paragraph;
-          value = product.autoOpenText || "";
+          value = clampText(product.autoOpenText || "", 4000, "");
+        } else if (action === "autoreplyappend") {
+          title = `ต่อท้ายข้อความเด้ง ${productId}`;
+          label = "ข้อความที่จะต่อท้าย";
+          style = TextInputStyle.Paragraph;
+          value = "";
         } else if (action === "stock") {
           title = `เพิ่มสต็อก ${productId}`;
           label = "1 ครั้ง = 1 stock เช่น role:123||link:abc";
           style = TextInputStyle.Paragraph;
           value = "";
+        } else {
+          return interaction.reply({ content: "❌ action ไม่ถูกต้อง", ephemeral: true });
         }
 
         modal
@@ -1771,13 +2137,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 .setLabel(label)
                 .setStyle(style)
                 .setRequired(true)
-                .setValue(value.slice(0, 4000))
+                .setValue(value)
             )
           );
 
         return interaction.showModal(modal);
       }
 
+      // ticket info
       if (interaction.customId.startsWith("ticket_info_")) {
         const orderId = interaction.customId.replace("ticket_info_", "");
         const order = findOrderById(orderId);
@@ -1797,15 +2164,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 [
                   `> **เลขออเดอร์:** ${order.id}`,
                   `> **สถานะ:** ${getOrderStatusText(order.status)}`,
-                  `> **สินค้า:** ${product?.name || order.productId}`,
-                  `> **ราคา:** ${product?.price || "-"}`,
+                  `> **สินค้า:** ${clampText(product?.name || order.productId, 120)}`,
+                  `> **ราคา:** ${clampText(product?.price || "-", 80)}`,
                 ].join("\n")
-              )
+              ),
           ],
           ephemeral: true,
         });
       }
 
+      // close ticket
       if (interaction.customId.startsWith("ticket_close_")) {
         const orderId = interaction.customId.replace("ticket_close_", "");
         const order = findOrderById(orderId);
@@ -1858,6 +2226,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      // approve
       if (interaction.customId.startsWith("approve_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์อนุมัติรายการนี้", ephemeral: true });
@@ -1939,50 +2308,58 @@ client.on(Events.InteractionCreate, async (interaction) => {
           : null;
 
         if (ticketChannel) {
-          await ticketChannel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(COLORS.green)
-                .setTitle("ชำระเงินสำเร็จ")
-                .setDescription(
-                  [
-                    `${member}`,
-                    "",
-                    product ? `> **สินค้า:** ${product.name}` : null,
-                    baseRole ? `> **ยศหลักที่ได้รับ:** <@&${baseRole.id}>` : null,
-                    grantedRoles.length
-                      ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}` 
-                      : null,
-                    "",
-                    "ทีมงานอนุมัติรายการของคุณเรียบร้อยแล้ว",
-                  ]
-                    .filter(Boolean)
-                    .join("\n")
-                ),
-            ],
-            components: [buildTicketButtons(orderId, true)],
-          }).catch(() => {});
-
-          if (textDeliveries.length) {
-            await ticketChannel.send({
+          await ticketChannel
+            .send({
               embeds: [
                 new EmbedBuilder()
-                  .setColor(COLORS.blue)
-                  .setTitle("✦ ตัวสินค้า / รายละเอียดหลังซื้อ")
-                  .setDescription(textDeliveries.join("\n").slice(0, 4000)),
+                  .setColor(COLORS.green)
+                  .setTitle("ชำระเงินสำเร็จ")
+                  .setDescription(
+                    [
+                      `${member}`,
+                      "",
+                      product ? `> **สินค้า:** ${clampText(product.name, 120)}` : null,
+                      baseRole ? `> **ยศหลักที่ได้รับ:** <@&${baseRole.id}>` : null,
+                      grantedRoles.length
+                        ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}`
+                        : null,
+                      "",
+                      "ทีมงานอนุมัติรายการของคุณเรียบร้อยแล้ว",
+                    ]
+                      .filter(Boolean)
+                      .join("\n")
+                  ),
               ],
-            }).catch(() => {});
+              components: [buildTicketButtons(orderId, true)],
+            })
+            .catch(() => {});
+
+          if (textDeliveries.length) {
+            const deliveryEmbeds = buildSectionEmbeds({
+              guild: interaction.guild,
+              product: normalizeProduct(product || {}),
+              title: "ตัวสินค้า / รายละเอียดหลังซื้อ",
+              rawText: textDeliveries.join("\n"),
+              color: COLORS.blue,
+              prefix: "ข้อมูลส่วนที่",
+            });
+
+            for (const embedsPart of chunkArray(deliveryEmbeds, MAX_EMBEDS_PER_MESSAGE)) {
+              await ticketChannel.send({ embeds: embedsPart }).catch(() => {});
+            }
           }
 
           if (failedRoles.length) {
-            await ticketChannel.send({
-              embeds: [
-                new EmbedBuilder()
-                  .setColor(COLORS.orange)
-                  .setTitle("⚠ มีบาง role ที่แจกไม่สำเร็จ")
-                  .setDescription(failedRoles.join("\n").slice(0, 4000)),
-              ],
-            }).catch(() => {});
+            await ticketChannel
+              .send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setColor(COLORS.orange)
+                    .setTitle("⚠ มีบาง role ที่แจกไม่สำเร็จ")
+                    .setDescription(clampText(failedRoles.join("\n"), EMBED_DESC_LIMIT)),
+                ],
+              })
+              .catch(() => {});
           }
 
           if (!baseRole && !textDeliveries.length && !grantedRoles.length) {
@@ -2000,10 +2377,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
               [
                 `> **เลขออเดอร์:** ${updated.id}`,
                 `> **ลูกค้า:** ${member.user.tag}`,
-                product ? `> **สินค้า:** ${product.name}` : null,
+                product ? `> **สินค้า:** ${clampText(product.name, 120)}` : null,
                 baseRole ? `> **ยศหลัก:** <@&${baseRole.id}>` : null,
                 grantedRoles.length
-                  ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}` 
+                  ? `> **ยศจาก stock:** ${grantedRoles.map((r) => `<@&${r.id}>`).join(", ")}`
                   : null,
                 textDeliveries.length ? `> **มีข้อความจัดส่ง:** ใช่` : null,
                 failedRoles.length ? `> **role ที่แจกไม่สำเร็จ:** ${failedRoles.length}` : null,
@@ -2025,7 +2402,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
             failedRoles.length ? `\nหมายเหตุ: มีบาง role ที่ระบบแจกไม่สำเร็จ กรุณาติดต่อแอดมิน` : null,
           ].filter(Boolean);
 
-          await member.send(dmLines.join("\n"));
+          const dmChunks = splitLongText(dmLines.join("\n"), 1900);
+          for (const dmChunk of dmChunks) {
+            await member.send(dmChunk).catch(() => {});
+          }
         } catch {}
 
         return interaction.update({
@@ -2035,6 +2415,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // reject
       if (interaction.customId.startsWith("reject_")) {
         if (!canReviewPayments(interaction.member)) {
           return interaction.reply({ content: "❌ คุณไม่มีสิทธิ์ปฏิเสธรายการนี้", ephemeral: true });
@@ -2061,15 +2442,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
           : null;
 
         if (ticketChannel) {
-          await ticketChannel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(COLORS.red)
-                .setTitle("สลิปยังไม่ผ่าน")
-                .setDescription("กรุณาส่งสลิปใหม่อีกครั้งในห้องนี้"),
-            ],
-            components: [buildTicketButtons(orderId, false)],
-          }).catch(() => {});
+          await ticketChannel
+            .send({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor(COLORS.red)
+                  .setTitle("สลิปยังไม่ผ่าน")
+                  .setDescription("กรุณาส่งสลิปใหม่อีกครั้งในห้องนี้"),
+              ],
+              components: [buildTicketButtons(orderId, false)],
+            })
+            .catch(() => {});
         }
 
         await sendLog(
@@ -2082,7 +2465,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
               [
                 member ? `> **ลูกค้า:** ${member.user.tag}` : null,
                 `> **เลขออเดอร์:** ${updated.id}`,
-                product ? `> **สินค้า:** ${product.name}` : null,
+                product ? `> **สินค้า:** ${clampText(product.name, 120)}` : null,
               ]
                 .filter(Boolean)
                 .join("\n")
@@ -2154,6 +2537,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const ticket = await createPrivateOrderTicket(interaction.guild, member, product, order);
 
+        const quickEmbeds = buildProductDetailsEmbeds(interaction.guild, product).slice(0, 3);
+        if (quickEmbeds[0]) {
+          quickEmbeds[0].setDescription(
+            [
+              `> **เลขออเดอร์:** ${order.id}`,
+              `> **สินค้า:** ${clampText(product.name, 120)}`,
+              `> **ราคา:** ${clampText(product.price, 80)}`,
+              "",
+              `ระบบเปิด ticket ส่วนตัวให้คุณแล้วที่ ${ticket}`,
+            ].join("\n")
+          );
+        }
+
         await sendLog(
           interaction.guild,
           LOG_PAYMENT_NAME,
@@ -2164,28 +2560,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
               [
                 `> **เลขออเดอร์:** ${order.id}`,
                 `> **ลูกค้า:** ${member.user.tag}`,
-                `> **สินค้า:** ${product.name}`,
-                `> **ราคา:** ${product.price}`,
+                `> **สินค้า:** ${clampText(product.name, 120)}`,
+                `> **ราคา:** ${clampText(product.price, 80)}`,
                 `> **Ticket:** ${ticket}`,
               ].join("\n")
             )
             .setTimestamp()
         );
 
-        return interaction.reply({
-          embeds: [
-            buildProductDetailsEmbed(interaction.guild, product).setDescription(
-              [
-                `> **เลขออเดอร์:** ${order.id}`,
-                `> **สินค้า:** ${product.name}`,
-                `> **ราคา:** ${product.price}`,
-                "",
-                `ระบบเปิด ticket ส่วนตัวให้คุณแล้วที่ ${ticket}`,
-              ].join("\n")
-            ),
-          ],
-          ephemeral: true,
-        });
+        return sendEmbedsSmart(interaction, quickEmbeds, { ephemeral: true });
       }
 
       if (interaction.customId === "admin_select_product") {
@@ -2205,7 +2588,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         return interaction.reply({
-          embeds: [buildProductDetailsEmbed(interaction.guild, product)],
+          embeds: buildProductDetailsEmbeds(interaction.guild, product).slice(0, 10),
           components: buildProductManageButtons(product.id),
           ephemeral: true,
         });
@@ -2252,11 +2635,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
               .setDescription(
                 [
                   `> **รหัสสินค้า:** ${id}`,
-                  `> **ชื่อ:** ${name}`,
-                  `> **ราคา:** ${price}`,
-                  `> **หมวด:** ${category || "ทั่วไป"}`,
+                  `> **ชื่อ:** ${clampText(name, 120)}`,
+                  `> **ราคา:** ${clampText(price, 80)}`,
+                  `> **หมวด:** ${clampText(category || "ทั่วไป", 80)}`,
+                  `> **รายละเอียดเริ่มต้น:** ${description.length.toLocaleString("th-TH")} ตัวอักษร`,
+                  `> **ข้อความหลังซื้อเริ่มต้น:** ${delivery.length.toLocaleString("th-TH")} ตัวอักษร`,
                   "",
                   `ใช้ \`${PREFIX}setimage ${id}\` แล้วแนบรูป เพื่อใส่รูปสินค้า`,
+                  `ถ้าข้อความยาวมาก ใช้ \`${PREFIX}importdesc ${id}\` แล้วแนบไฟล์ .txt`,
                 ].join("\n")
               ),
           ],
@@ -2265,7 +2651,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (interaction.customId.startsWith("modal_manage_")) {
-        const [, , action, productId] = interaction.customId.split("_");
+        const parts = interaction.customId.split("_");
+        const action = parts[2];
+        const productId = parts.slice(3).join("_");
         const value = interaction.fields.getTextInputValue("value").trim();
 
         const products = loadProducts();
@@ -2278,8 +2666,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (action === "price") products[index].price = value;
         if (action === "category") products[index].category = value || "ทั่วไป";
         if (action === "desc") products[index].description = value;
+        if (action === "descappend") {
+          products[index].description = [products[index].description, value].filter(Boolean).join("\n");
+        }
         if (action === "delivery") products[index].deliveryText = value;
+        if (action === "deliveryappend") {
+          products[index].deliveryText = [products[index].deliveryText, value].filter(Boolean).join("\n");
+        }
         if (action === "autoreply") products[index].autoOpenText = value;
+        if (action === "autoreplyappend") {
+          products[index].autoOpenText = [products[index].autoOpenText, value].filter(Boolean).join("\n");
+        }
         if (action === "stock") {
           if (!Array.isArray(products[index].stocks)) {
             products[index].stocks = [];
@@ -2290,7 +2687,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         saveProducts(products);
 
         return interaction.reply({
-          content: `✅ อัปเดตสินค้า ${products[index].id} เรียบร้อยแล้ว`,
+          content: `✅ อัปเดตสินค้า ${products[index].id} เรียบร้อยแล้ว
+รายละเอียด: ${products[index].description.length.toLocaleString("th-TH")} ตัวอักษร
+ข้อความหลังซื้อ: ${products[index].deliveryText.length.toLocaleString("th-TH")} ตัวอักษร
+ข้อความเด้ง: ${products[index].autoOpenText.length.toLocaleString("th-TH")} ตัวอักษร`,
           ephemeral: true,
         });
       }
@@ -2299,15 +2699,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
     console.error("Interaction error:", error);
 
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: "❌ เกิดข้อผิดพลาดระหว่างจัดการคำสั่ง",
-        ephemeral: true,
-      }).catch(() => {});
+      await interaction
+        .followUp({
+          content: "❌ เกิดข้อผิดพลาดระหว่างจัดการคำสั่ง",
+          ephemeral: true,
+        })
+        .catch(() => {});
     } else {
-      await interaction.reply({
-        content: "❌ เกิดข้อผิดพลาดระหว่างจัดการคำสั่ง",
-        ephemeral: true,
-      }).catch(() => {});
+      await interaction
+        .reply({
+          content: "❌ เกิดข้อผิดพลาดระหว่างจัดการคำสั่ง",
+          ephemeral: true,
+        })
+        .catch(() => {});
     }
   }
 });
@@ -2363,7 +2767,7 @@ client.on(Events.MessageDelete, async (message) => {
       .addFields(
         { name: "ผู้ใช้", value: `${message.author?.tag || "ไม่ทราบ"}`, inline: true },
         { name: "ห้อง", value: `${message.channel}`, inline: true },
-        { name: "ข้อความ", value: message.content?.slice(0, 1000) || "ไม่มีข้อความ" }
+        { name: "ข้อความ", value: clampText(message.content?.slice(0, 1000) || "ไม่มีข้อความ", 1000) }
       )
       .setTimestamp()
   );
@@ -2383,8 +2787,8 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
       .addFields(
         { name: "ผู้ใช้", value: `${newMessage.author?.tag || "ไม่ทราบ"}`, inline: true },
         { name: "ห้อง", value: `${newMessage.channel}`, inline: true },
-        { name: "ก่อนแก้", value: oldMessage.content?.slice(0, 1000) || "ไม่มีข้อความ" },
-        { name: "หลังแก้", value: newMessage.content?.slice(0, 1000) || "ไม่มีข้อความ" }
+        { name: "ก่อนแก้", value: clampText(oldMessage.content?.slice(0, 1000) || "ไม่มีข้อความ", 1000) },
+        { name: "หลังแก้", value: clampText(newMessage.content?.slice(0, 1000) || "ไม่มีข้อความ", 1000) }
       )
       .setTimestamp()
   );
@@ -2424,11 +2828,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   await sendLog(
     guild,
     LOG_VOICE_NAME,
-    new EmbedBuilder()
-      .setColor(action.color)
-      .setTitle(action.title)
-      .setDescription(action.desc)
-      .setTimestamp()
+    new EmbedBuilder().setColor(action.color).setTitle(action.title).setDescription(action.desc).setTimestamp()
   );
 });
 
@@ -2471,4 +2871,5 @@ if (!TOKEN) {
 
 ensureJsonFile(PRODUCTS_FILE);
 ensureJsonFile(ORDERS_FILE);
+normalizeAllProducts();
 client.login(TOKEN);
